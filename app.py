@@ -4,6 +4,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import datetime
 import calendar
+import plotly.express as px # 원형 차트 구현을 위한 라이브러리
 
 # --- 1. 구글 시트 연결 설정 ---
 def get_gspread_client():
@@ -19,7 +20,6 @@ def get_gspread_client():
 def load_data():
     client = get_gspread_client()
     try:
-        # 시트 이름을 실제 이름과 대조하세요.
         sheet = client.open("AION2_Raid_Data").sheet1
         data = sheet.get_all_records()
         return pd.DataFrame(data), sheet
@@ -42,9 +42,11 @@ with st.sidebar:
     input_date = st.date_input("레이드 날짜 선택", datetime.date(fixed_year, 3, 25))
     date_str = str(input_date)
     
+    # 공격대원 명단 (유저1~8)
     members = [f"유저{i}" for i in range(1, 9)]
     name = st.selectbox("본인 이름 선택", members)
     
+    # 시간 선택 슬라이더
     time_range = st.select_slider(
         "접속 가능 시간대 (시)",
         options=list(range(25)),
@@ -63,9 +65,8 @@ with st.sidebar:
             st.success(f"✅ {name}님 저장 완료!")
             st.rerun()
 
-# --- 4. 메인 현황판 (2026년 달력 뷰) ---
+# --- 4. 메인 현황판 (달력 뷰) ---
 st.write("---")
-# 공대장님이 선택한 날짜의 연/월을 기준으로 달력 표시
 cal_year = input_date.year
 cal_month = input_date.month
 
@@ -78,7 +79,7 @@ if not df.empty:
     # 해당 연/월의 달력 배열 생성
     cal = calendar.monthcalendar(cal_year, cal_month)
 
-    # 달력 헤더 (일~토)
+    # 달력 헤더
     days = ["일", "월", "화", "수", "목", "금", "토"]
     cols_header = st.columns(7)
     for i, d in enumerate(days):
@@ -95,41 +96,67 @@ if not df.empty:
                 count_row = summary[summary['날짜'] == target_date]
                 count = count_row['인원'].values[0] if not count_row.empty else 0
                 
-                # 아이콘 설정
                 status_icon = "🔥" if count >= 8 else "✅" if count > 0 else "⚪"
                 
-                # 버튼 색상 및 강조 (선택된 날짜 강조)
+                # 버튼 강조
                 is_selected = "primary" if target_date == input_date else "secondary"
                 
                 with cols[i]:
                     button_label = f"{day}\n({status_icon}{count}명)"
                     if st.button(button_label, key=f"d_{day}", use_container_width=True, type=is_selected):
-                        # 달력의 날짜를 누르면 사이드바의 날짜도 바뀔 수 있게 유도 (세션 저장)
                         st.session_state.selected_date = target_date
 
-# --- 5. 상세 참여 현황 ---
+# --- 5. 상세 참여 현황 (시계형 원형 차트) ---
 st.write("---")
-# 사이드바 입력 날짜를 우선으로 보여줌
+# 사이드바 날짜를 우선시
 display_date = input_date
 if 'selected_date' in st.session_state:
-    # 달력에서 버튼을 눌렀다면 그 날짜를 우선시함
+    # 달력에서 날짜를 클릭하면 그 날짜를 우선시함
     display_date = st.session_state.selected_date
 
-st.markdown(f"### 🔍 {display_date} 상세 참여 현황")
-day_df = df[df['날짜'] == display_date].sort_values(by='시작')
+st.markdown(f"### 🔍 {display_date} 상세 참여 현황 (시계형)")
+day_df = df[df['날짜'] == display_date]
 
 if not day_df.empty:
-    display_df = day_df[['이름', '시작', '종료']].copy()
-    display_df.columns = ['대원명', '시작 시간(시)', '종료 시간(시)']
-    st.table(display_df)
+    # 원형 차트 데이터 전처리
+    current_df = day_df.copy()
+    current_df[' duration'] = current_df['종료'] - current_df['시작'] # 부채꼴 크기 계산
+    current_df['start_angle'] = current_df['시작'] * 15 # 24시간 = 360도이므로 1시간 = 15도
+
+    # 24시간 원형 차트 생성 (Plotly Express)
+    fig = px.sunburst(
+        current_df,
+        path=['이름'],
+        values=' duration',
+        color='이름',
+        template='plotly_dark',
+        height=550,
+        title="24시간 원형 타임 차트"
+    )
     
-    if len(day_df) >= 8:
+    # 24시간 축 설정 (시계처럼 보이게)
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(visible=False, range=[0, 1]), # 반지름 축 숨김
+            angularaxis=dict(
+                tickvals=list(range(25)), # 0시~24시 축
+                ticktext=[f"{i}시" for i in range(25)],
+                direction="clockwise", # 시계 방향
+                rotation=90 # 12시 방향에서 시작
+            )
+        )
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # 인원수 및 겹침 확인 알림
+    count = len(day_df)
+    if count >= 8:
         st.balloons()
-        st.success("🔥 8인 풀파티 매칭 완료!")
+        st.success("🔥 8인 풀파티 매칭 완료! 원형 차트의 겹치는 부분을 확인하세요!")
     else:
-        st.warning(f"현재 {len(day_df)}명 등록됨 (8명까지 {8-len(day_df)}명 부족)")
+        st.warning(f"현재 {count}명 등록됨 (8명까지 {8-count}명 부족)")
 else:
     st.info("해당 날짜에 등록된 인원이 없습니다.")
 
 st.write("---")
-st.caption("AION2 RAID - 2026년 정밀 동기화 모드")
+st.caption("AION2 RAID - 2026년 원형 타임 차트 모드")
