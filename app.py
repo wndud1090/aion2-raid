@@ -116,7 +116,7 @@ if 'view_date' not in st.session_state:
 
 # [4] 사이드바: 관리자 설정 및 일정 등록
 with st.sidebar:
-    st.markdown("<h3 style='color:#FF4B4B;'>🛡️ AION2 본부</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='color:#FF4B4B;'>🛡️ AION2 잊걔팀</h3>", unsafe_allow_html=True)
     st.caption(f"📍 KST: {today}")
     
     with st.expander("🔐 관리자 설정"):
