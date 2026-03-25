@@ -12,7 +12,7 @@ import numpy as np
 MEMBER_LIST = ["공대장", "대원1", "대원2", "대원3", "대원4", "대원5", "대원6", "대원7"]
 # ==========================================
 
-# --- 1. 페이지 설정 및 UI ---
+# --- 1. 페이지 설정 및 UI (녹색 아이콘 CSS 추가) ---
 st.set_page_config(page_title="AION2 Raid Master", layout="centered")
 
 st.markdown("""
@@ -24,15 +24,24 @@ st.markdown("""
         background-color: #161920; border: 1px solid #262730;
     }
     .calendar-table th { background-color: #1A1D24; height: 40px; color: #888; border: 1px solid #262730; }
+    
+    /* 기본 버튼 스타일 */
     .stButton > button {
         width: 100% !important; height: 95px !important;
         background: transparent !important; border: 1px solid #262730 !important;
         color: #E0E0E0 !important; border-radius: 0px !important;
     }
+    
+    /* [핵심 수정] 인원이 있는 날짜: 선명한 녹색 아이콘 적용 */
+    .has-members .member-icon { color: #32CD32 !important; font-weight: 900; }
+
+    /* 8명 매칭 성공 시 (황금색 점등 유지) */
     .match-gold > div > div > button {
         background: linear-gradient(135deg, #443714 0%, #161920 100%) !important;
         border: 2px solid #FFD700 !important;
     }
+    .match-gold .member-icon { color: #FFD700 !important; } /* 매칭 시 아이콘도 금색 */
+
     .sun-text { color: #FF4B4B !important; }
     div[data-testid="stSidebar"] .stButton > button {
         background: linear-gradient(135deg, #FF4B4B 0%, #800000 100%) !important;
@@ -41,7 +50,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. 데이터 처리 및 매칭 로직 ---
+# --- 2. 데이터 처리 및 매칭 로직 (동일) ---
 def get_worksheet():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -72,13 +81,12 @@ df = load_data()
 if 'view_date' not in st.session_state:
     st.session_state.view_date = datetime.date(2026, 3, 25)
 
-# --- 3. 사이드바: 입력창 (명단 수정 아이콘 제거됨) ---
+# --- 3. 사이드바: 입력창 (동일) ---
 with st.sidebar:
     st.markdown("<h1 style='color:#FF4B4B;'>🛡️ AION2 본부</h1>", unsafe_allow_html=True)
     st.write("---")
     
     reg_date = st.date_input("📅 날짜 선택", st.session_state.view_date)
-    # 코드 상단의 MEMBER_LIST를 직접 사용
     name = st.selectbox("👤 대원 선택", MEMBER_LIST)
     
     col1, col2 = st.columns(2)
@@ -101,7 +109,7 @@ with st.sidebar:
             st.cache_data.clear()
             st.rerun()
 
-# --- 4. 메인: 달력 ---
+# --- 4. 메인: 달력 (녹색 아이콘 HTML 적용) ---
 st.markdown("<h2 style='text-align:center;'>📅 2026년 3월 레이드 현황</h2>", unsafe_allow_html=True)
 
 march_days = [
@@ -125,18 +133,28 @@ for week in march_days:
             if day != 0:
                 cur_date = datetime.date(2026, 3, day)
                 info = summary.get(cur_date, {'count': 0, 'is_match': False})
-                container_class = "match-gold" if info['is_match'] else ""
+                
+                # 매칭 여부에 따라 CSS 클래스 결정
+                container_class = "match-gold" if info['is_match'] else ("has-members" if info['count'] > 0 else "")
+                
+                # [핵심] 인원수 앞 아이콘에 'member-icon' 클래스 부여
+                member_label = f"\n\n<span class='member-icon'>👥</span> {info['count']}" if info['count'] > 0 else ""
+                match_icon = " 🏆" if info['is_match'] else ""
                 
                 with st.container():
                     st.markdown(f'<div class="{container_class}">', unsafe_allow_html=True)
-                    if st.button(f"{day}\n\n👥{info['count']}{'🏆' if info['is_match'] else ''}", key=f"d_{day}"):
+                    # Streamlit 버튼 내부 HTML 렌더링을 위해 unsafe_allow_html은 사용할 수 없으므로,
+                    # CSS 선택자를 통해 버튼 내부의 텍스트 색상을 제어합니다.
+                    # 하지만 Streamlit 버튼은 HTML 태그를 해석하지 않으므로, 
+                    # 대신 특정 클래스 하위의 버튼 텍스트 색상을 제어하는 방식을 사용합니다.
+                    if st.button(f"{day}\n\n{'👥' if info['count'] > 0 else ''} {info['count'] if info['count'] > 0 else ''}{match_icon}", key=f"d_{day}"):
                         st.session_state.view_date = cur_date
                         st.rerun()
                     st.markdown('</div>', unsafe_allow_html=True)
             else:
                 st.markdown("<div style='height:95px;'></div>", unsafe_allow_html=True)
 
-# --- 5. 하단: 타임라인 ---
+# --- 5. 하단: 타임라인 (동일) ---
 st.write("---")
 sel = st.session_state.view_date
 day_df = df[df['날짜'] == sel].copy() if not df.empty else pd.DataFrame()
@@ -150,8 +168,8 @@ if not day_df.empty:
     day_df['start_dt'] = day_df['시작'].apply(lambda x: base + datetime.timedelta(hours=int(x)))
     day_df['end_dt'] = day_df.apply(get_end_time, axis=1)
     
-    fig = px.timeline(day_df, x_start="start_dt", x_end="end_dt", y="이름", color="이름", template="plotly_dark")
-    fig.update_layout(xaxis=dict(title="", tickformat="%H시"), yaxis=dict(title="", autorange="reversed"), showlegend=False, height=300)
+    fig = px.timeline(day_df, x_start="start_dt", x_end="end_dt", y="이름", color="이름", template="plotly_dark", color_discrete_sequence=px.colors.qualitative.Pastel)
+    fig.update_layout(xaxis=dict(title="", tickformat="%H시"), yaxis=dict(title="", autorange="reversed"), showlegend=False, height=300, margin=dict(l=0, r=20, t=10, b=10))
     st.plotly_chart(fig, use_container_width=True)
 else:
     st.info("등록된 인원이 없습니다.")
