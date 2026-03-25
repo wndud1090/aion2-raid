@@ -8,10 +8,10 @@ import plotly.express as px
 import numpy as np
 import calendar
 
-# [1] 요일 시작 설정 (일요일=6, 파이썬 calendar 기준 SUNDAY 고정)
+# [1] 요일 시작 설정 (일요일 시작 고정)
 calendar.setfirstweekday(calendar.SUNDAY)
 
-# [2] 대원 명단 설정 (여기서 직접 수정)
+# [2] 대원 명단 설정
 MEMBER_LIST = ["공대장", "대원1", "대원2", "대원3", "대원4", "대원5", "대원6", "대원7"]
 
 # [3] 서울 표준시(KST) 및 2026년 날짜 설정
@@ -19,35 +19,47 @@ KST = timezone(timedelta(hours=9))
 now_kst = datetime.datetime.now(KST)
 today = datetime.date(2026, now_kst.month, now_kst.day)
 
-# 페이지 설정
 st.set_page_config(page_title="AION2 Raid Master", layout="wide")
 
-# CSS 스타일 적용
+# [4] CSS 스타일 (황금 테두리 로직 강화)
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #E0E0E0; }
+    
     .calendar-card {
         background-color: #1A1D24; border: 1px solid #36393E;
         border-radius: 12px; padding: 20px; margin-bottom: 20px;
     }
+    
     .calendar-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
     .calendar-table th { height: 35px; color: #888; border-bottom: 1px solid #36393E; font-size: 0.8rem; text-align: center; }
+    
+    /* 기본 버튼 디자인 */
     .stButton > button {
-        width: 100% !important; height: 80px !important;
+        width: 100% !important; height: 85px !important;
         background: #161920 !important; border: 1px solid #262730 !important;
-        color: #E0E0E0 !important; margin-top: 4px; font-size: 0.9rem !important;
+        color: #E0E0E0 !important; margin-top: 5px; font-size: 0.95rem !important;
+        transition: 0.2s;
     }
+
+    /* 인원 있음 (녹색 텍스트) */
     .has-members button { color: #32CD32 !important; font-weight: bold; }
-    .match-gold > div > div > button {
+
+    /* [중요] 8명 매칭 성공: 황금 테두리 및 배경 강제 적용 */
+    div.match-gold button {
         background: linear-gradient(135deg, #443714 0%, #1A1D24 100%) !important;
-        border: 1px solid #FFD700 !important; color: #FFD700 !important; font-weight: 900 !important;
+        border: 2px solid #FFD700 !important;
+        color: #FFD700 !important;
+        font-weight: 900 !important;
+        box-shadow: 0 0 10px rgba(255, 215, 0, 0.3) !important;
     }
+
     .sun-text { color: #FF4B4B !important; }
-    [data-testid="column"] { padding: 0 25px !important; }
+    [data-testid="column"] { padding: 0 20px !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# [4] 데이터 처리 함수들
+# [5] 데이터 처리 로직
 def get_worksheet():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -79,7 +91,7 @@ df = load_data()
 if 'view_date' not in st.session_state:
     st.session_state.view_date = today
 
-# [5] 사이드바 입력창
+# [6] 사이드바
 with st.sidebar:
     st.markdown("<h1 style='color:#FF4B4B;'>🛡️ AION2 잊걔팀</h1>", unsafe_allow_html=True)
     st.info(f"📍 서울 기준: {today}")
@@ -104,7 +116,7 @@ with st.sidebar:
             st.cache_data.clear()
             st.rerun()
 
-# [6] 달력 그리기 함수 (요일 위치 교정형)
+# [7] 달력 그리기 (요일 및 황금 테두리 교정)
 def draw_calendar(year, month, data_df):
     st.markdown(f'<div class="calendar-card">', unsafe_allow_html=True)
     st.markdown(f"<h3 style='text-align:center; color:#FFD700;'>{year}년 {month}월</h3>", unsafe_allow_html=True)
@@ -124,14 +136,16 @@ def draw_calendar(year, month, data_df):
             with cols[i]:
                 if day != 0:
                     info = summary.get(day, {'count': 0, 'is_match': False})
+                    # 클래스 지정
                     c_class = "match-gold" if info['is_match'] else ("has-members" if info['count'] > 0 else "")
                     
-                    # 라벨 구성
-                    icon = "👥" if info['count'] > 0 else ""
-                    cnt_txt = str(info['count']) if info['count'] > 0 else ""
-                    match_txt = "🏆" if info['is_match'] else ""
-                    label = f"{day}\n\n{icon}{cnt_txt}{match_txt}"
+                    label = f"{day}\n\n"
+                    if info['count'] > 0:
+                        label += f"👥{info['count']}"
+                    if info['is_match']:
+                        label += " 🏆"
                     
+                    # div로 감싸서 CSS 클래스 적용
                     st.markdown(f'<div class="{c_class}">', unsafe_allow_html=True)
                     if st.button(label, key=f"btn_{year}_{month}_{day}"):
                         st.session_state.view_date = datetime.date(year, month, day)
@@ -141,7 +155,7 @@ def draw_calendar(year, month, data_df):
                     st.write("")
     st.markdown('</div>', unsafe_allow_html=True)
 
-# 메인 화면 구성
+# 메인 레이아웃
 this_month_first = today.replace(day=1)
 next_month_first = (this_month_first + timedelta(days=32)).replace(day=1)
 
@@ -156,7 +170,7 @@ st.write("---")
 sel = st.session_state.view_date
 day_df = df[df['날짜'] == sel].copy() if not df.empty else pd.DataFrame()
 if not day_df.empty:
-    st.markdown(f"### 📊 {sel} 타임라인")
+    st.markdown(f"### 📊 {sel} 타임라인 " + ("<span style='color:#FFD700;'>[MATCH]</span>" if check_8man_match(day_df) else ""), unsafe_allow_html=True)
     base = datetime.datetime.combine(sel, datetime.time.min)
     def get_end_time(row):
         s, e = int(row['시작']), int(row['종료'])
@@ -167,4 +181,4 @@ if not day_df.empty:
     fig.update_layout(xaxis=dict(title="", tickformat="%H시"), yaxis=dict(title="", autorange="reversed"), showlegend=False, height=300)
     st.plotly_chart(fig, use_container_width=True)
 else:
-    st.info(f"{sel} 일정이 없습니다.")
+    st.info(f"{sel} 등록된 대원이 없습니다.")
