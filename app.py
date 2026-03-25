@@ -79,7 +79,7 @@ with st.sidebar:
     
     # [추가] 대원 명단 설정 섹션
     with st.expander("👥 대원 명단 설정 (8명)", expanded=False):
-        raw_names = st.text_area("쉼표(,)로 구분해서 입력", "공대장, 대원1, 대원2, 대원3, 대원4, 대원5, 대원6, 대원7")
+        raw_names = st.text_area("쉼표(,)로 구분해서 입력", "잊, 걔, 서하, 식혜, 대원4, 대원5, 대원6, 대원7")
         member_list = [n.strip() for n in raw_names.split(",") if n.strip()][:8]
         st.caption(f"현재 등록된 인원: {len(member_list)}명")
 
