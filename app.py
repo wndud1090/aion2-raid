@@ -2,27 +2,29 @@ import streamlit as st
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-import plotly.express as px
 import datetime
+import calendar
 
 # --- 1. 구글 시트 연결 설정 ---
 def get_gspread_client():
-    # Streamlit Secrets에 저장된 [gspread] 정보를 읽어옵니다.
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds_dict = st.secrets["gspread"]
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    return gspread.authorize(creds)
+    try:
+        creds_dict = st.secrets["gspread"]
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        return gspread.authorize(creds)
+    except Exception as e:
+        st.error(f"Secrets 설정 오류: {e}")
+        st.stop()
 
 def load_data():
     client = get_gspread_client()
-    # 공대장님의 구글 시트 이름을 정확히 입력하세요 (예: "AION2_Raid_Data")
-    # 시트 이름이 다르면 여기서 수정해야 합니다.
+    # 시트 이름을 공대장님의 실제 시트 이름으로 정확히 수정하세요.
     try:
         sheet = client.open("AION2_Raid_Data").sheet1
         data = sheet.get_all_records()
         return pd.DataFrame(data), sheet
     except Exception as e:
-        st.error(f"시트를 찾을 수 없습니다: {e}")
+        st.error(f"시트 로드 실패: {e}")
         return pd.DataFrame(), None
 
 # --- 2. 페이지 기본 설정 ---
@@ -34,81 +36,100 @@ df, sheet = load_data()
 
 # --- 3. 입력 섹션 (사이드바) ---
 with st.sidebar:
-    st.header("📝 일정 등록/수정")
-    # 날짜 선택 (기본값 오늘)
+    st.header("📝 내 일정 등록")
+    # 날짜 선택
     input_date = st.date_input("레이드 날짜 선택", datetime.date.today())
     date_str = str(input_date)
     
-    # 공격대원 명단 (필요시 수정 가능)
+    # 공격대원 명단 (유저1~8)
     members = [f"유저{i}" for i in range(1, 9)]
     name = st.selectbox("본인 이름 선택", members)
     
-    # 시간 선택 슬라이더 (0시 ~ 24시)
+    # 시간 선택 슬라이더
     time_range = st.select_slider(
-        "접속 가능 시간대",
+        "접속 가능 시간대 (시)",
         options=list(range(25)),
         value=(20, 23)
     )
     
     if st.button("🚀 일정 확정 (시트 저장)"):
         if sheet is not None:
-            # 중복 데이터 삭제 로직: 동일 날짜 + 동일 유저 데이터가 있으면 제거
+            # 중복 데이터 삭제 (같은 날짜 + 같은 이름)
             if not df.empty:
-                # 시트의 모든 데이터를 가져와서 유저 이름과 날짜가 일치하는 행 탐색
                 all_values = sheet.get_all_values()
                 for i, row in enumerate(all_values):
                     if row[0] == date_str and row[1] == name:
-                        sheet.delete_rows(i + 1) # 해당 행 삭제
+                        sheet.delete_rows(i + 1)
             
-            # 새로운 데이터 추가 (날짜, 이름, 시작, 종료)
+            # 새 데이터 추가
             sheet.append_row([date_str, name, time_range[0], time_range[1]])
-            st.success(f"✅ {name}님 {date_str} 일정 저장 완료!")
-            st.rerun() # 화면 새로고침하여 그래프 업데이트
-        else:
-            st.error("시트 연결에 실패하여 저장할 수 없습니다.")
+            st.success(f"✅ {name}님 저장 완료!")
+            st.rerun()
 
-# --- 4. 메인 현황판 섹션 ---
-st.subheader(f"📅 {date_str} 참여 현황")
+# --- 4. 메인 현황판 (달력 뷰) ---
+st.write("---")
+st.subheader(f"📅 {datetime.date.today().month}월 레이드 일정표")
 
 if not df.empty:
-    # 현재 선택한 날짜의 데이터만 필터링
-    current_day_df = df[df['날짜'].astype(str) == date_str]
+    # 데이터 전처리
+    df['날짜'] = pd.to_datetime(df['날짜']).dt.date
+    summary = df.groupby('날짜').size().reset_index(name='인원')
+
+    # 현재 달 계산
+    today = datetime.date.today()
+    cal = calendar.monthcalendar(today.year, today.month)
+
+    # 달력 헤더
+    days = ["일", "월", "화", "수", "목", "금", "토"]
+    cols_header = st.columns(7)
+    for i, d in enumerate(days):
+        cols_header[i].markdown(f"<p style='text-align:center'><b>{d}</b></p>", unsafe_allow_html=True)
+
+    # 달력 본문 생성
+    for week in cal:
+        cols = st.columns(7)
+        for i, day in enumerate(week):
+            if day == 0:
+                cols[i].write("")
+            else:
+                target_date = datetime.date(today.year, today.month, day)
+                count_row = summary[summary['날짜'] == target_date]
+                count = count_row['인원'].values[0] if not count_row.empty else 0
+                
+                # 상태 아이콘 및 색상 설정
+                status_icon = "🔥" if count >= 8 else "✅" if count > 0 else "⚪"
+                
+                # 날짜 버튼 생성 (클릭 시 세션에 저장)
+                with cols[i]:
+                    button_label = f"{day}\n({status_icon}{count}명)"
+                    if st.button(button_label, key=f"d_{day}", use_container_width=True):
+                        st.session_state.selected_date = target_date
+
+# --- 5. 선택한 날짜 상세 명단 (표) ---
+st.write("---")
+if 'selected_date' in st.session_state:
+    sel_date = st.session_state.selected_date
+    st.markdown(f"### 🔍 {sel_date} 상세 참여 현황")
     
-    if not current_day_df.empty:
-        # 타임라인 그래프 시각화
-        fig = px.timeline(
-            current_day_df, 
-            x_start="시작", 
-            x_end="종료", 
-            y="이름", 
-            color="이름",
-            template="plotly_dark"
-        )
+    # 해당 날짜 데이터만 필터링
+    day_df = df[df['날짜'] == sel_date].sort_values(by='시작')
+    
+    if not day_df.empty:
+        # 가독성 좋은 표로 출력
+        display_df = day_df[['이름', '시작', '종료']].copy()
+        display_df.columns = ['대원명', '시작 시간(시)', '종료 시간(시)']
+        st.table(display_df)
         
-        # 그래프 가독성 조절 (시간 축 설정)
-        fig.update_layout(
-            xaxis=dict(
-                title="시간 (0시~24시)", 
-                tickvals=list(range(25)),
-                range=[0, 24]
-            ),
-            yaxis=dict(title="대원명", autorange="reversed"),
-            showlegend=False,
-            height=450
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # 인원수 체크 및 알림
-        count = len(current_day_df)
-        if count >= 8:
+        # 8명 달성 여부 표시
+        if len(day_df) >= 8:
             st.balloons()
-            st.success(f"🔥 축하합니다! {date_str}에 8명 풀파티 매칭 완료!")
+            st.success("🔥 8인 풀파티 매칭 완료! 레이드 출발!")
         else:
-            st.info(f"💡 현재 {count}명 등록 중입니다. (8인까지 {8-count}명 남음)")
+            st.warning(f"현재 {len(day_df)}명 등록됨 (8명까지 {8-len(day_df)}명 부족)")
     else:
-        st.info("해당 날짜에 등록된 일정이 없습니다. 왼쪽에서 첫 일정을 등록해 보세요!")
+        st.info("해당 날짜에 등록된 인원이 없습니다.")
 else:
-    st.warning("데이터베이스(시트)가 비어있습니다.")
+    st.info("위 달력에서 날짜를 클릭하면 상세 명단을 볼 수 있습니다.")
 
 st.write("---")
-st.caption("AION2 RAID SCHEDULER - 데이터 실시간 동기화 모드")
+st.caption("AION2 RAID - 사람이 편한 달력형 조율 시스템")
