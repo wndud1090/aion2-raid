@@ -58,7 +58,7 @@ with st.sidebar:
     st.markdown("<h1 style='color:#FF4B4B;'>🛡️ AION2 설정</h1>", unsafe_allow_html=True)
     
     with st.expander("👥 대원 명단 설정 (8명)", expanded=False):
-        raw_names = st.text_area("쉼표(,)로 구분 입력", "공대장, 대원1, 대원2, 대원3, 대원4, 대원5, 대원6, 대원7")
+        raw_names = st.text_area("쉼표(,)로 구분 입력", "잊, 걔, 아앜, 요잇, 소아과, 정신과, 안과, 대원7")
         member_list = [n.strip() for n in raw_names.split(",") if n.strip()][:8]
 
     st.write("---")
