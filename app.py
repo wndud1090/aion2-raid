@@ -6,28 +6,27 @@ import datetime
 import calendar
 import plotly.express as px
 
-# --- 1. 페이지 설정 및 완전 밀착형 정사각형 그리드 CSS ---
+# --- 1. 페이지 설정 및 강제 정사각형 CSS ---
 st.set_page_config(page_title="AION2 레이드 조율실", layout="wide")
 
 st.markdown("""
     <style>
-    /* 전체 배경 및 폰트 */
     .stApp { background-color: #0E1117; color: #E0E0E0; }
     
-    /* [핵심] 컬럼 간격 제거 및 가로 꽉 채우기 */
+    /* [핵심] 컬럼 간격 및 여백 완전 제거 */
     div[data-testid="stColumn"] { padding: 0px !important; margin: 0px !important; }
     div[data-testid="stHorizontalBlock"] { gap: 0 !important; }
 
-    /* 정사각형 버튼 디자인: 가로 100% + 세로 고정 */
+    /* [필살기] 가로/세로 비율을 강제로 1:1에 가깝게 고정 (화면 크기에 따라 조정 가능) */
     .stButton > button {
         width: 100% !important;
-        height: 160px !important; /* 높이를 충분히 주어 정사각형 형태 유지 */
+        aspect-ratio: 1 / 1 !important; /* 가로 세로 1:1 비율 강제 */
+        min-height: 140px !important;
         margin: 0 !important;
         padding: 0 !important;
         border-radius: 0px !important; 
-        border: 0.5px solid #262730 !important; 
+        border: 1px solid #262730 !important; 
         background-color: #161920 !important;
-        color: #666 !important;
         transition: all 0.2s;
         display: flex;
         flex-direction: column;
@@ -40,9 +39,12 @@ st.markdown("""
         color: #00FBFF !important;
         border: 1px solid #00FBFF !important;
     }
-    .has-data > div > div > button p { font-weight: 900 !important; }
+    .has-data > div > div > button p { 
+        font-weight: 900 !important;
+        font-size: 1.2rem !important; /* 인원수 글자 키움 */
+    }
 
-    /* 선택된 날짜: AION2 시그니처 레드 */
+    /* 선택된 날짜: 강렬한 레드 테두리 */
     .selected-date > div > div > button {
         background-color: #2D1A1E !important;
         border: 2px solid #FF4B4B !important;
@@ -57,12 +59,11 @@ st.markdown("""
         padding: 15px 0;
         border: 1px solid #262730;
         color: #aaa;
-        margin: 0;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. 구글 시트 연결 로직 ---
+# --- 2. 구글 시트 연결 ---
 def get_client():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gspread"], scope)
@@ -97,8 +98,8 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
-# --- 5. 메인 달력: 빈틈없는 7열 정사각형 그리드 ---
-st.title("AION2 8인 레이드 실시간 조율실")
+# --- 5. 메인 달력: 7열 고정 정사각형 그리드 ---
+st.title("AION2 레이드 조율 대시보드")
 v_date = st.session_state.sel_date
 cal = calendar.monthcalendar(v_date.year, v_date.month)
 
@@ -108,16 +109,20 @@ h_cols = st.columns(7)
 for i, d in enumerate(days):
     h_cols[i].markdown(f"<div class='day-header'>{d}</div>", unsafe_allow_html=True)
 
+# 데이터 요약
 if not df.empty:
     df['날짜'] = pd.to_datetime(df['날짜']).dt.date
     summary = df.groupby('날짜').size().reset_index(name='인원')
+else:
+    summary = pd.DataFrame(columns=['날짜', '인원'])
 
 # 달력 그리드 생성
 for week in cal:
     cols = st.columns(7)
     for i, day in enumerate(week):
         if day == 0:
-            cols[i].markdown("<div style='height:160px; background-color:#0E1117; border:0.5px solid #161920;'></div>", unsafe_allow_html=True)
+            # 빈 칸도 같은 높이를 유지하도록 설정
+            cols[i].markdown("<div style='aspect-ratio:1/1; min-height:140px; background-color:#0E1117; border:0.5px solid #161920;'></div>", unsafe_allow_html=True)
         else:
             cur_date = datetime.date(v_date.year, v_date.month, day)
             cnt = summary[summary['날짜'] == cur_date]['인원'].values[0] if not summary[summary['날짜'] == cur_date].empty else 0
@@ -126,7 +131,7 @@ for week in cal:
             if cnt > 0: c_class = "has-data"
             if cur_date == st.session_state.sel_date: c_class = "selected-date"
             
-            # 레이블 구성 (날짜와 인원수)
+            # 레이블 구성
             label = f"{day}\n\n{f'👥 {cnt}명' if cnt > 0 else ''}"
             
             with cols[i]:
@@ -136,10 +141,10 @@ for week in cal:
                     st.rerun()
                 st.markdown("</div>", unsafe_allow_html=True)
 
-# --- 6. 하단 타임라인 (가독성 강화) ---
+# --- 6. 하단 타임라인 (1970년 버그 수정 버전) ---
 st.write("---")
 day_df = df[df['날짜'] == st.session_state.sel_date].copy()
-st.subheader(f"📊 {st.session_state.sel_date} 참여 타임라인")
+st.subheader(f"📊 {st.session_state.sel_date} 참여 현황")
 
 if not day_df.empty:
     base = datetime.datetime.combine(st.session_state.sel_date, datetime.time.min)
@@ -151,8 +156,8 @@ if not day_df.empty:
         template="plotly_dark", color_discrete_sequence=px.colors.qualitative.Bold
     )
     fig.update_layout(
-        xaxis=dict(title="접속 시간", tickformat="%H시", dtick=3600000 * 2),
-        yaxis=dict(title="", tickfont=dict(size=22, color="white", family="Arial Black")),
+        xaxis=dict(title="시간 (0시~24시)", tickformat="%H시", dtick=3600000 * 2),
+        yaxis=dict(title="", tickfont=dict(size=22, color="white")),
         showlegend=False, height=450, margin=dict(l=0, r=20, t=10, b=10)
     )
     st.plotly_chart(fig, use_container_width=True)
