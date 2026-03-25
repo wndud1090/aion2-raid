@@ -31,30 +31,34 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. 데이터 로드 및 중복 제거 로직 ---
-def get_client():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gspread"], scope)
-    return gspread.authorize(creds)
+# --- 2. 구글 시트 연결 함수 (에러 방지를 위해 통합) ---
+def get_worksheet():
+    try:
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gspread"], scope)
+        client = gspread.authorize(creds)
+        # 시트 이름이 "AION2_Raid_Data"인지 다시 확인해주세요
+        return client.open("AION2_Raid_Data").sheet1
+    except Exception as e:
+        st.error(f"시트 연결 에러: {e}")
+        return None
 
 @st.cache_data(ttl=5)
 def load_data():
-    try:
-        client = get_client()
-        sheet = client.open("AION2_Raid_Data").sheet1
-        data = pd.DataFrame(sheet.get_all_records())
+    ws = get_worksheet()
+    if ws:
+        data = pd.DataFrame(ws.get_all_records())
         if not data.empty:
             data['날짜'] = pd.to_datetime(data['날짜']).dt.date
-        return data, sheet
-    except:
-        return pd.DataFrame(), None
+        return data
+    return pd.DataFrame()
 
-df, sheet = load_data()
+df = load_data()
 
 if 'view_date' not in st.session_state:
     st.session_state.view_date = datetime.date(2026, 3, 25)
 
-# --- 3. 사이드바: 중복 체크 및 데이터 갱신 등록 ---
+# --- 3. 사이드바: 설정 및 등록 ---
 with st.sidebar:
     st.markdown("<h1 style='color:#FF4B4B;'>🛡️ AION2 설정</h1>", unsafe_allow_html=True)
     
@@ -66,43 +70,40 @@ with st.sidebar:
     reg_date = st.date_input("📅 날짜 선택", st.session_state.view_date)
     name = st.selectbox("👤 대원 선택", member_list)
     
-    st.write("⏰ **접속 시간 설정**")
     col1, col2 = st.columns(2)
     with col1: s_time = st.number_input("시작(시)", 0, 23, 22)
     with col2: e_time = st.number_input("종료(시)", 0, 23, 2)
     
     if st.button("🚀 일정 확정"):
-        # [핵심] 중복 데이터 삭제 로직
-        all_rows = sheet.get_all_values()
-        header = all_rows[0]
-        data_rows = all_rows[1:]
-        
-        # 새 데이터 준비
-        new_row = [str(reg_date), name, s_time, e_time]
-        
-        # 기존 시트에서 '날짜'와 '이름'이 같은 행 찾기
-        updated_data = [header]
-        found_duplicate = False
-        
-        for row in data_rows:
-            # row[0]은 날짜, row[1]은 이름 (시트 구조에 따라 인덱스 확인 필요)
-            if row[0] == str(reg_date) and row[1] == name:
-                updated_data.append(new_row) # 기존꺼 대신 새 데이터 넣기
-                found_duplicate = True
-            else:
-                updated_data.append(row)
-        
-        if not found_duplicate:
-            updated_data.append(new_row)
+        ws = get_worksheet()
+        if ws:
+            # 전체 데이터를 가져와서 중복 체크
+            all_data = ws.get_all_values()
+            header = all_data[0]
+            rows = all_data[1:]
             
-        # 시트 전체 갱신 (가장 확실한 방법)
-        sheet.update('A1', updated_data)
-        
-        st.cache_data.clear()
-        st.success(f"✅ {name} 대원의 일정이 최신화되었습니다.")
-        st.rerun()
+            new_row = [str(reg_date), name, s_time, e_time]
+            updated_rows = [header]
+            found = False
+            
+            for r in rows:
+                # 날짜와 이름이 모두 일치하면 새 데이터로 교체
+                if r[0] == str(reg_date) and r[1] == name:
+                    updated_rows.append(new_row)
+                    found = True
+                else:
+                    updated_rows.append(r)
+            
+            if not found:
+                updated_rows.append(new_row)
+            
+            # 시트 전체 업데이트
+            ws.update('A1', updated_rows)
+            st.cache_data.clear()
+            st.success(f"✅ {name} 일정이 업데이트되었습니다.")
+            st.rerun()
 
-# --- 4. 메인: 달력 및 인원 표시 ---
+# --- 4. 메인: 달력 ---
 st.markdown("<h2 style='text-align:center;'>📅 2026년 3월 레이드 현황</h2>", unsafe_allow_html=True)
 
 march_days = [
@@ -111,7 +112,6 @@ march_days = [
     [29, 30, 31, 0, 0, 0, 0]
 ]
 
-# 날짜별 고유 인원수 계산 (중복 방지 체크 완료)
 summary = df.groupby('날짜')['이름'].nunique() if not df.empty else pd.Series()
 
 html_h = '<table class="calendar-table"><thead><tr>'
@@ -139,7 +139,7 @@ st.write("---")
 sel = st.session_state.view_date
 st.markdown(f"### 📊 {sel} 접속 타임라인")
 
-day_df = df[df['날짜'] == sel].copy()
+day_df = df[df['날짜'] == sel].copy() if not df.empty else pd.DataFrame()
 
 if not day_df.empty:
     base = datetime.datetime.combine(sel, datetime.time.min)
