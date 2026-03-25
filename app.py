@@ -38,12 +38,12 @@ df, sheet = load_data()
 with st.sidebar:
     st.header("📝 내 일정 등록")
     fixed_year = 2026
-    # 공대장님 요청대로 2026년 날짜로 기본값 설정
     input_date = st.date_input("레이드 날짜 선택", datetime.date(fixed_year, 3, 25))
     date_str = str(input_date)
     
     members = [f"유저{i}" for i in range(1, 9)]
     name = st.selectbox("본인 이름 선택", members)
+    # 슬라이더에서 24시를 선택해도 에러나지 않게 처리
     time_range = st.select_slider("접속 가능 시간대 (시)", options=list(range(25)), value=(20, 23))
     
     if st.button("🚀 일정 확정 (시트 저장)"):
@@ -81,7 +81,6 @@ if not df.empty:
                 cnt = cnt_row['인원'].values[0] if not cnt_row.empty else 0
                 icon = "🔥" if cnt >= 8 else "✅" if cnt > 0 else "⚪"
                 
-                # 달력 버튼
                 if cols[i].button(f"{day}\n({icon}{cnt}명)", key=f"d_{day}", use_container_width=True, 
                                   type="primary" if t_date == input_date else "secondary"):
                     st.session_state.selected_date = t_date
@@ -91,28 +90,32 @@ st.write("---")
 display_date = st.session_state.get('selected_date', input_date)
 st.markdown(f"### 📊 {display_date} 시간대별 겹침 확인")
 
-day_df = df[df['날짜'] == display_date]
+day_df = df[df['날짜'] == display_date].copy()
 
 if not day_df.empty:
-    # Plotly용 데이터 정리 (가로 바 형식)
+    # 에러 방지를 위한 시간 변환 함수
+    def to_dt(h):
+        if h == 24:
+            return datetime.datetime(2026, 1, 1, 23, 59, 59) # 24시는 23시 59분으로 처리
+        return datetime.datetime(2026, 1, 1, int(h))
+
     fig = px.timeline(
         day_df, 
-        x_start=day_df['시작'].apply(lambda x: datetime.datetime(2026, 1, 1, int(x))),
-        x_end=day_df['종료'].apply(lambda x: datetime.datetime(2026, 1, 1, int(x))),
+        x_start=day_df['시작'].apply(to_dt),
+        x_end=day_df['종료'].apply(to_dt),
         y="이름",
         color="이름",
         text="이름",
-        labels={"이름": "공격대원"},
         template="plotly_dark"
     )
 
-    # X축(시간) 설정: 0시부터 24시까지 명확하게 표시
     fig.update_layout(
         xaxis=dict(
             title="접속 시간 (시)",
             tickformat="%H시",
-            dtick=3600000, # 1시간 간격 (밀리초)
-            range=[datetime.datetime(2026, 1, 1, 0), datetime.datetime(2026, 1, 1, 24)]
+            dtick=3600000,
+            # 범위를 1월 1일 0시부터 1월 2일 0시까지로 설정하여 24시 에러 해결
+            range=[datetime.datetime(2026, 1, 1, 0), datetime.datetime(2026, 1, 2, 0)]
         ),
         yaxis=dict(title="대원 명단", autorange="reversed"),
         showlegend=False,
@@ -121,14 +124,13 @@ if not day_df.empty:
     
     st.plotly_chart(fig, use_container_width=True)
     
-    # 인원수 체크
     count = len(day_df)
     if count >= 8:
         st.balloons()
-        st.success(f"🔥 현재 8명 풀파티! 위 그래프에서 세로로 꽉 찬 시간대에 출발하세요!")
+        st.success(f"🔥 현재 {count}명 풀파티! 매칭되는 시간대를 확인하세요!")
     else:
         st.warning(f"현재 {count}명 대기 중 (8인까지 {8-count}명 남음)")
 else:
     st.info("이날은 아직 등록된 일정이 없습니다.")
 
-st.caption("AION2 RAID - 가로 바 타임라인 시스템")
+st.caption("AION2 RAID - 안정화된 가로 바 시스템")
