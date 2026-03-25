@@ -81,7 +81,7 @@ if 'view_date' not in st.session_state:
 
 # [5] 사이드바 입력창
 with st.sidebar:
-    st.markdown("<h1 style='color:#FF4B4B;'>🛡️ AION2 본부</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='color:#FF4B4B;'>🛡️ AION2 잊걔팀</h1>", unsafe_allow_html=True)
     st.info(f"📍 서울 기준: {today}")
     reg_date = st.date_input("📅 날짜 선택", st.session_state.view_date)
     name = st.selectbox("👤 대원 선택", MEMBER_LIST)
