@@ -31,7 +31,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. 데이터 로드 ---
+# --- 2. 데이터 로드 및 중복 제거 로직 ---
 def get_client():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gspread"], scope)
@@ -43,48 +43,66 @@ def load_data():
         client = get_client()
         sheet = client.open("AION2_Raid_Data").sheet1
         data = pd.DataFrame(sheet.get_all_records())
-        data['날짜'] = pd.to_datetime(data['날짜']).dt.date
+        if not data.empty:
+            data['날짜'] = pd.to_datetime(data['날짜']).dt.date
         return data, sheet
     except:
         return pd.DataFrame(), None
 
-df, _ = load_data()
+df, sheet = load_data()
 
 if 'view_date' not in st.session_state:
     st.session_state.view_date = datetime.date(2026, 3, 25)
 
-# --- 3. 사이드바: 익일 대응 입력창 ---
+# --- 3. 사이드바: 중복 체크 및 데이터 갱신 등록 ---
 with st.sidebar:
     st.markdown("<h1 style='color:#FF4B4B;'>🛡️ AION2 설정</h1>", unsafe_allow_html=True)
     
-    with st.expander("👥 대원 명단 설정 (8명)", expanded=False):
-        raw_names = st.text_area("쉼표(,)로 구분 입력", "잊, 걔, 아앜, 요잇, 소아과, 정신과, 안과, 대원7")
+    with st.expander("👥 대원 명단 설정", expanded=False):
+        raw_names = st.text_area("쉼표(,)로 구분 입력", "공대장, 대원1, 대원2, 대원3, 대원4, 대원5, 대원6, 대원7")
         member_list = [n.strip() for n in raw_names.split(",") if n.strip()][:8]
 
     st.write("---")
     reg_date = st.date_input("📅 날짜 선택", st.session_state.view_date)
     name = st.selectbox("👤 대원 선택", member_list)
     
-    # 시간 선택 방식 변경: 시작과 종료를 각각 선택 (익일 대응을 위해)
     st.write("⏰ **접속 시간 설정**")
     col1, col2 = st.columns(2)
-    with col1:
-        s_time = st.number_input("시작(시)", 0, 23, 22)
-    with col2:
-        e_time = st.number_input("종료(시)", 0, 23, 2)
+    with col1: s_time = st.number_input("시작(시)", 0, 23, 22)
+    with col2: e_time = st.number_input("종료(시)", 0, 23, 2)
     
-    if s_time >= e_time:
-        st.warning("🌙 종료가 시작보다 빠르면 '익일 새벽'으로 자동 처리됩니다.")
-
     if st.button("🚀 일정 확정"):
-        client = get_client()
-        ws = client.open("AION2_Raid_Data").sheet1
-        ws.append_row([str(reg_date), name, s_time, e_time])
+        # [핵심] 중복 데이터 삭제 로직
+        all_rows = sheet.get_all_values()
+        header = all_rows[0]
+        data_rows = all_rows[1:]
+        
+        # 새 데이터 준비
+        new_row = [str(reg_date), name, s_time, e_time]
+        
+        # 기존 시트에서 '날짜'와 '이름'이 같은 행 찾기
+        updated_data = [header]
+        found_duplicate = False
+        
+        for row in data_rows:
+            # row[0]은 날짜, row[1]은 이름 (시트 구조에 따라 인덱스 확인 필요)
+            if row[0] == str(reg_date) and row[1] == name:
+                updated_data.append(new_row) # 기존꺼 대신 새 데이터 넣기
+                found_duplicate = True
+            else:
+                updated_data.append(row)
+        
+        if not found_duplicate:
+            updated_data.append(new_row)
+            
+        # 시트 전체 갱신 (가장 확실한 방법)
+        sheet.update('A1', updated_data)
+        
         st.cache_data.clear()
-        st.success(f"{name} 등록 완료!")
+        st.success(f"✅ {name} 대원의 일정이 최신화되었습니다.")
         st.rerun()
 
-# --- 4. 메인: 달력 ---
+# --- 4. 메인: 달력 및 인원 표시 ---
 st.markdown("<h2 style='text-align:center;'>📅 2026년 3월 레이드 현황</h2>", unsafe_allow_html=True)
 
 march_days = [
@@ -92,7 +110,9 @@ march_days = [
     [15, 16, 17, 18, 19, 20, 21], [22, 23, 24, 25, 26, 27, 28],
     [29, 30, 31, 0, 0, 0, 0]
 ]
-summary = df.groupby('날짜').size() if not df.empty else pd.Series()
+
+# 날짜별 고유 인원수 계산 (중복 방지 체크 완료)
+summary = df.groupby('날짜')['이름'].nunique() if not df.empty else pd.Series()
 
 html_h = '<table class="calendar-table"><thead><tr>'
 for i, d in enumerate(["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]):
@@ -114,7 +134,7 @@ for week in march_days:
             else:
                 st.markdown("<div style='height:90px;'></div>", unsafe_allow_html=True)
 
-# --- 5. 하단: 타임라인 그래프 (익일 로직 적용) ---
+# --- 5. 하단: 타임라인 그래프 ---
 st.write("---")
 sel = st.session_state.view_date
 st.markdown(f"### 📊 {sel} 접속 타임라인")
@@ -123,15 +143,9 @@ day_df = df[df['날짜'] == sel].copy()
 
 if not day_df.empty:
     base = datetime.datetime.combine(sel, datetime.time.min)
-    
-    # 익일 로직 적용 함수
     def get_end_time(row):
-        start = int(row['시작'])
-        end = int(row['종료'])
-        # 종료 시간이 시작 시간보다 작으면 다음 날로 처리
-        if end <= start:
-            return base + datetime.timedelta(days=1, hours=end)
-        return base + datetime.timedelta(hours=end)
+        s, e = int(row['시작']), int(row['종료'])
+        return base + datetime.timedelta(days=(1 if e <= s else 0), hours=e)
 
     day_df['start_dt'] = day_df['시작'].apply(lambda x: base + datetime.timedelta(hours=int(x)))
     day_df['end_dt'] = day_df.apply(get_end_time, axis=1)
@@ -140,13 +154,8 @@ if not day_df.empty:
         day_df, x_start="start_dt", x_end="end_dt", y="이름", color="이름",
         template="plotly_dark", color_discrete_sequence=px.colors.qualitative.Pastel
     )
-    
-    # 시간축 표시 범위 최적화 (24시간을 넘기더라도 보여줌)
-    fig.update_layout(
-        xaxis=dict(title="", tickformat="%H시"), 
-        yaxis=dict(title="", autorange="reversed"),
-        showlegend=False, height=300, margin=dict(l=0, r=20, t=10, b=10)
-    )
+    fig.update_layout(xaxis=dict(title="", tickformat="%H시"), yaxis=dict(title="", autorange="reversed"),
+                      showlegend=False, height=300, margin=dict(l=0, r=20, t=10, b=10))
     st.plotly_chart(fig, use_container_width=True)
 else:
     st.info("등록된 인원이 없습니다.")
