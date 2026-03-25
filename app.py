@@ -14,46 +14,56 @@ import calendar
 MEMBER_LIST = ["공대장", "대원1", "대원2", "대원3", "대원4", "대원5", "대원6", "대원7"]
 # ==========================================
 
-# --- 1. 페이지 설정 및 UI ---
-st.set_page_config(page_title="AION2 Raid Master", layout="wide") # 달력 2개를 위해 와이드 모드
+# --- 1. 페이지 설정 및 강화된 UI (달력 분리 레이아웃) ---
+st.set_page_config(page_title="AION2 Raid Master", layout="wide")
 
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #E0E0E0; }
+    
+    /* 달력 박스 스타일: 개별 달력을 카드 형태로 분리 */
+    .calendar-card {
+        background-color: #1A1D24;
+        border: 1px solid #36393E;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    
     .calendar-table {
-        width: 100%; margin: 10px auto;
-        border-collapse: collapse; table-layout: fixed;
-        background-color: #161920; border: 1px solid #262730;
+        width: 100%; border-collapse: collapse; table-layout: fixed;
     }
-    .calendar-table th { background-color: #1A1D24; height: 35px; color: #888; border: 1px solid #262730; font-size: 0.8rem; }
+    .calendar-table th { 
+        height: 35px; color: #888; border-bottom: 1px solid #36393E; 
+        font-size: 0.8rem; text-align: center;
+    }
     
+    /* 버튼 여백 및 디자인 */
     .stButton > button {
-        width: 100% !important; height: 80px !important;
-        background: transparent !important; border: 1px solid #262730 !important;
-        color: #E0E0E0 !important; border-radius: 0px !important;
-        font-size: 0.9rem !important;
+        width: 100% !important; height: 75px !important;
+        background: #161920 !important; 
+        border: 1px solid #262730 !important;
+        color: #E0E0E0 !important; margin-top: 4px;
+        transition: 0.2s;
     }
+    .stButton > button:hover { border-color: #4A4D52 !important; background: #1F232C !important; }
     
-    /* 인원 있음: 녹색 아이콘 */
+    /* 인원 있음 (녹색) / 8인 매칭 (금색) */
     .has-members button { color: #32CD32 !important; font-weight: bold; }
-    
-    /* 8명 매칭: 황금색 점등 */
     .match-gold > div > div > button {
-        background: linear-gradient(135deg, #443714 0%, #161920 100%) !important;
+        background: linear-gradient(135deg, #443714 0%, #1A1D24 100%) !important;
         border: 1px solid #FFD700 !important;
         color: #FFD700 !important;
-        font-weight: 900 !important;
     }
 
     .sun-text { color: #FF4B4B !important; }
-    div[data-testid="stSidebar"] .stButton > button {
-        background: linear-gradient(135deg, #FF4B4B 0%, #800000 100%) !important;
-        color: white !important; height: 45px !important; border-radius: 8px !important;
-    }
+    
+    /* 중앙 여백을 위한 컬럼 간격 조정 */
+    [data-testid="column"] { padding: 0 25px !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. 데이터 처리 로직 ---
+# --- 2. 데이터 처리 로직 (기존 유지) ---
 def get_worksheet():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -86,7 +96,7 @@ today = datetime.date.today()
 if 'view_date' not in st.session_state:
     st.session_state.view_date = today
 
-# --- 3. 사이드바 입력창 ---
+# --- 3. 사이드바 (등록 창) ---
 with st.sidebar:
     st.markdown("<h1 style='color:#FF4B4B;'>🛡️ AION2 본부</h1>", unsafe_allow_html=True)
     reg_date = st.date_input("📅 날짜 선택", st.session_state.view_date)
@@ -110,11 +120,12 @@ with st.sidebar:
             st.cache_data.clear()
             st.rerun()
 
-# --- 4. 메인: 자동 2개월 달력 생성기 ---
+# --- 4. 메인: 여백이 강화된 2개월 달력 ---
 def draw_calendar(year, month, data_df):
-    st.markdown(f"#### 📅 {year}년 {month}월")
+    # 카드 형태의 컨테이너 시작
+    st.markdown(f'<div class="calendar-card">', unsafe_allow_html=True)
+    st.markdown(f"<h3 style='text-align:center; color:#FFD700;'>{year}년 {month}월</h3>", unsafe_allow_html=True)
     
-    # 요일 헤더
     st.markdown('<table class="calendar-table"><thead><tr><th class="sun-text">SUN</th><th>MON</th><th>TUE</th><th>WED</th><th>THU</th><th>FRI</th><th>SAT</th></tr></thead></table>', unsafe_allow_html=True)
     
     cal = calendar.monthcalendar(year, month)
@@ -141,11 +152,13 @@ def draw_calendar(year, month, data_df):
                     st.markdown('</div>', unsafe_allow_html=True)
                 else:
                     st.write("")
+    st.markdown('</div>', unsafe_allow_html=True) # 카드 컨테이너 끝
 
 # 이번 달 및 다음 달 계산
 this_month_first = today.replace(day=1)
 next_month_first = (this_month_first + timedelta(days=32)).replace(day=1)
 
+# 중앙 여백을 확실히 주기 위해 컬럼 배치 및 패딩 활용
 col_left, col_right = st.columns(2)
 with col_left:
     draw_calendar(this_month_first.year, this_month_first.month, df)
