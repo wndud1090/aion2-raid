@@ -1,117 +1,105 @@
 import streamlit as st
-import datetime
-import calendar
 
-# --- 1. 페이지 설정 및 강제 정렬 CSS ---
-st.set_page_config(page_title="AION2 Raid Master", layout="centered")
+# --- 1. 화면 중앙 정렬 및 디자인 CSS ---
+st.set_page_config(page_title="2026 March Calendar", layout="centered")
 
 st.markdown("""
     <style>
     /* 배경 및 기본 폰트 */
     .stApp { background-color: #0E1117; color: #E0E0E0; }
     
-    /* [핵심] 달력 전체 컨테이너: 요일과 날짜를 하나의 그리드로 통합 */
-    .calendar-board {
-        display: grid;
-        grid-template-columns: repeat(7, 1fr); /* 무조건 7열 고정 */
+    /* 달력 테이블 스타일 */
+    .calendar-table {
         width: 100%;
-        max-width: 800px;
-        margin: 20px auto;
-        border: 1px solid #262730;
+        max-width: 700px;
+        margin: 40px auto;
+        border-collapse: collapse;
+        table-layout: fixed; /* 칸 크기 강제 고정 */
         background-color: #161920;
+        border: 1px solid #262730;
     }
 
-    /* 요일 및 날짜 공통 박스 설정 */
-    .cal-box {
-        aspect-ratio: 1 / 1; /* 완벽한 정사각형 유지 */
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        border: 0.5px solid #262730;
-        font-size: 1.1rem;
+    /* 요일 및 날짜 칸 */
+    .calendar-table th, .calendar-table td {
+        border: 1px solid #262730;
+        text-align: center;
+        vertical-align: middle;
+        height: 100px; /* 정사각형에 가깝게 높이 고정 */
     }
 
-    /* 요일 헤더 전용 */
-    .header-box {
+    /* 요일 헤더 */
+    .calendar-table th {
         background-color: #1A1D24;
-        height: 60px; /* 요일칸은 조금 슬림하게 */
-        aspect-ratio: auto; 
+        height: 50px;
         color: #888;
-        font-weight: 900;
         font-size: 0.8rem;
-    }
-
-    /* 날짜 숫자 */
-    .day-num { font-weight: 700; margin-bottom: 5px; }
-
-    /* 데이터(인원) 표시: 네온 블루 */
-    .member-cnt {
-        color: #00FBFF;
-        font-size: 0.9rem;
         font-weight: 900;
-        text-shadow: 0 0 8px rgba(0, 251, 255, 0.4);
     }
 
-    /* 오늘/선택된 날짜: AION2 레드 */
-    .highlight-box {
+    /* 일요일 빨간색 */
+    .sun { color: #FF4B4B !important; }
+
+    /* 날짜 숫자 스타일 */
+    .day-num {
+        font-size: 1.3rem;
+        font-weight: 600;
+    }
+
+    /* 25일 하이라이트 (공대장님 예시) */
+    .today {
         background-color: #2D1A1E !important;
         border: 2px solid #FF4B4B !important;
         color: #FF4B4B !important;
     }
-
-    /* 사이드바 스타일링 */
-    div[data-testid="stSidebar"] { background-color: #11141A; }
+    
+    .raid-info {
+        font-size: 0.8rem;
+        color: #00FBFF;
+        font-weight: 900;
+        display: block;
+        margin-top: 5px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. 데이터 시뮬레이션 (공대장님 시트 데이터 연동 가능) ---
-# 예시로 3월 25일 3명, 27일 1명을 표시합니다.
-raid_data = {25: 3, 27: 1}
+# --- 2. 2026년 3월 달력 구조 직접 생성 ---
+# 2026년 3월은 일요일(1일)부터 시작합니다.
+march_2026 = [
+    [1, 2, 3, 4, 5, 6, 7],
+    [8, 9, 10, 11, 12, 13, 14],
+    [15, 16, 17, 18, 19, 20, 21],
+    [22, 23, 24, 25, 26, 27, 28],
+    [29, 30, 31, 0, 0, 0, 0] # 0은 빈칸
+]
 
-# --- 3. 사이드바 (깔끔한 입력창) ---
-with st.sidebar:
-    st.markdown("<h1 style='color:#FF4B4B; text-align:center;'>🛡️ AION2</h1>", unsafe_allow_html=True)
-    st.write("---")
-    st.date_input("날짜 선택", datetime.date(2026, 3, 25))
-    st.selectbox("대원명", [f"유저{i}" for i in range(1, 9)])
-    st.button("🚀 레이드 일정 등록")
+# --- 3. HTML 테이블 렌더링 ---
+st.markdown("<h2 style='text-align:center;'>2026년 3월</h2>", unsafe_allow_html=True)
 
-# --- 4. 메인 달력 생성 ---
-st.markdown("<h2 style='text-align:center;'>2026년 3월 현황</h2>", unsafe_allow_html=True)
+html = '<table class="calendar-table">'
+# 요일 헤더
+html += '<thead><tr>'
+days = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
+for i, d in enumerate(days):
+    sun_class = 'class="sun"' if i == 0 else ""
+    html += f'<th {sun_class}>{d}</th>'
+html += '</tr></thead><tbody>'
 
-# 그리드 시작
-cal_html = '<div class="calendar-board">'
-
-# 요일 헤더 추가
-for day_name in ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]:
-    color = "#FF4B4B" if day_name == "SUN" else "#888"
-    cal_html += f'<div class="cal-box header-box" style="color:{color};">{day_name}</div>'
-
-# 날짜 계산
-cal_obj = calendar.Calendar(firstweekday=6)
-month_days = cal_obj.monthdayscalendar(2026, 3)
-
-for week in month_days:
-    for day in week:
+# 날짜 렌더링
+for week in march_2026:
+    html += '<tr>'
+    for i, day in enumerate(week):
+        sun_class = 'class="sun"' if i == 0 else ""
         if day == 0:
-            cal_html += '<div class="cal-box"></div>' # 빈 칸
+            html_content = ""
+            td_class = ""
         else:
-            # 스타일 결정
-            box_class = "cal-box"
-            if day == 25: box_class += " highlight-box"
+            td_class = 'class="today"' if day == 25 else ""
+            raid_badge = '<span class="raid-info">👥 3명</span>' if day == 25 else ""
+            html_content = f'<span class="day-num">{day}</span>{raid_badge}'
             
-            # 인원 표시
-            member_info = f'<span class="member-cnt">👥 {raid_data[day]}</span>' if day in raid_data else ""
-            
-            cal_html += f'''
-                <div class="{box_class}">
-                    <span class="day-num">{day}</span>
-                    {member_info}
-                </div>
-            '''
+        html += f'<td {td_class} {sun_class if not td_class else ""}>{html_content}</td>'
+    html += '</tr>'
 
-cal_html += '</div>' # 그리드 종료
+html += '</tbody></table>'
 
-# 화면에 출력
-st.markdown(cal_html, unsafe_allow_html=True)
+st.markdown(html, unsafe_allow_html=True)
