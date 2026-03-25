@@ -3,7 +3,7 @@ import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import datetime
-from datetime import timedelta
+from datetime import timedelta, timezone
 import plotly.express as px
 import numpy as np
 import calendar
@@ -14,56 +14,41 @@ import calendar
 MEMBER_LIST = ["공대장", "대원1", "대원2", "대원3", "대원4", "대원5", "대원6", "대원7"]
 # ==========================================
 
-# --- 1. 페이지 설정 및 강화된 UI (달력 분리 레이아웃) ---
-st.set_page_config(page_title="AION2 Raid Master", layout="wide")
+# --- 1. 서울 기준 시간 설정 (KST) ---
+# 서버 시간과 상관없이 한국 시간으로 고정
+KST = timezone(timedelta(hours=9))
+now_kst = datetime.datetime.now(KST)
+# 2026년으로 연도 고정 (월, 일은 한국 실시간 반영)
+today = datetime.date(2026, now_kst.month, now_kst.day)
+
+# --- 2. 페이지 설정 및 UI ---
+st.set_page_config(page_title="AION2 Raid Master (KST)", layout="wide")
 
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #E0E0E0; }
-    
-    /* 달력 박스 스타일: 개별 달력을 카드 형태로 분리 */
     .calendar-card {
-        background-color: #1A1D24;
-        border: 1px solid #36393E;
-        border-radius: 12px;
-        padding: 20px;
-        margin-bottom: 20px;
+        background-color: #1A1D24; border: 1px solid #36393E;
+        border-radius: 12px; padding: 20px; margin-bottom: 20px;
     }
-    
-    .calendar-table {
-        width: 100%; border-collapse: collapse; table-layout: fixed;
-    }
-    .calendar-table th { 
-        height: 35px; color: #888; border-bottom: 1px solid #36393E; 
-        font-size: 0.8rem; text-align: center;
-    }
-    
-    /* 버튼 여백 및 디자인 */
+    .calendar-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .calendar-table th { height: 35px; color: #888; border-bottom: 1px solid #36393E; font-size: 0.8rem; text-align: center; }
     .stButton > button {
         width: 100% !important; height: 75px !important;
-        background: #161920 !important; 
-        border: 1px solid #262730 !important;
+        background: #161920 !important; border: 1px solid #262730 !important;
         color: #E0E0E0 !important; margin-top: 4px;
-        transition: 0.2s;
     }
-    .stButton > button:hover { border-color: #4A4D52 !important; background: #1F232C !important; }
-    
-    /* 인원 있음 (녹색) / 8인 매칭 (금색) */
     .has-members button { color: #32CD32 !important; font-weight: bold; }
     .match-gold > div > div > button {
         background: linear-gradient(135deg, #443714 0%, #1A1D24 100%) !important;
-        border: 1px solid #FFD700 !important;
-        color: #FFD700 !important;
+        border: 1px solid #FFD700 !important; color: #FFD700 !important;
     }
-
     .sun-text { color: #FF4B4B !important; }
-    
-    /* 중앙 여백을 위한 컬럼 간격 조정 */
     [data-testid="column"] { padding: 0 25px !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. 데이터 처리 로직 (기존 유지) ---
+# --- 3. 데이터 로직 ---
 def get_worksheet():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -91,14 +76,14 @@ def check_8man_match(day_df):
     return np.any(timeline >= 8)
 
 df = load_data()
-today = datetime.date.today()
 
 if 'view_date' not in st.session_state:
     st.session_state.view_date = today
 
-# --- 3. 사이드바 (등록 창) ---
+# --- 4. 사이드바 (KST 기준 날짜 입력) ---
 with st.sidebar:
-    st.markdown("<h1 style='color:#FF4B4B;'>🛡️ AION2 본부</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='color:#FF4B4B;'>🛡️ AION2 본부</h1>")
+    st.info(f"📍 서울 기준: {today}")
     reg_date = st.date_input("📅 날짜 선택", st.session_state.view_date)
     name = st.selectbox("👤 대원 선택", MEMBER_LIST)
     col1, col2 = st.columns(2)
@@ -120,12 +105,10 @@ with st.sidebar:
             st.cache_data.clear()
             st.rerun()
 
-# --- 4. 메인: 여백이 강화된 2개월 달력 ---
+# --- 5. 메인: 2026년 서울 기준 2개월 달력 ---
 def draw_calendar(year, month, data_df):
-    # 카드 형태의 컨테이너 시작
     st.markdown(f'<div class="calendar-card">', unsafe_allow_html=True)
     st.markdown(f"<h3 style='text-align:center; color:#FFD700;'>{year}년 {month}월</h3>", unsafe_allow_html=True)
-    
     st.markdown('<table class="calendar-table"><thead><tr><th class="sun-text">SUN</th><th>MON</th><th>TUE</th><th>WED</th><th>THU</th><th>FRI</th><th>SAT</th></tr></thead></table>', unsafe_allow_html=True)
     
     cal = calendar.monthcalendar(year, month)
@@ -144,28 +127,23 @@ def draw_calendar(year, month, data_df):
                     info = summary.get(day, {'count': 0, 'is_match': False})
                     c_class = "match-gold" if info['is_match'] else ("has-members" if info['count'] > 0 else "")
                     label = f"{day}\n\n{'👥' if info['count']>0 else ''}{info['count'] if info['count']>0 else ''}{'🏆' if info['is_match'] else ''}"
-                    
                     st.markdown(f'<div class="{c_class}">', unsafe_allow_html=True)
                     if st.button(label, key=f"btn_{year}_{month}_{day}"):
                         st.session_state.view_date = datetime.date(year, month, day)
                         st.rerun()
                     st.markdown('</div>', unsafe_allow_html=True)
-                else:
-                    st.write("")
-    st.markdown('</div>', unsafe_allow_html=True) # 카드 컨테이너 끝
+                else: st.write("")
+    st.markdown('</div>', unsafe_allow_html=True)
 
-# 이번 달 및 다음 달 계산
+# 이번 달 및 다음 달 계산 (KST 기준)
 this_month_first = today.replace(day=1)
 next_month_first = (this_month_first + timedelta(days=32)).replace(day=1)
 
-# 중앙 여백을 확실히 주기 위해 컬럼 배치 및 패딩 활용
 col_left, col_right = st.columns(2)
-with col_left:
-    draw_calendar(this_month_first.year, this_month_first.month, df)
-with col_right:
-    draw_calendar(next_month_first.year, next_month_first.month, df)
+with col_left: draw_calendar(this_month_first.year, this_month_first.month, df)
+with col_right: draw_calendar(next_month_first.year, next_month_first.month, df)
 
-# --- 5. 하단 타임라인 ---
+# --- 6. 하단 타임라인 ---
 st.write("---")
 sel = st.session_state.view_date
 day_df = df[df['날짜'] == sel].copy() if not df.empty else pd.DataFrame()
