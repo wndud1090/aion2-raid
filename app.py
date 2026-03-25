@@ -16,28 +16,59 @@ today = datetime.date(2026, now_kst.month, now_kst.day)
 
 st.set_page_config(page_title="AION2 Raid Master", layout="wide")
 
-# [2] CSS (비밀번호 입력창 및 관리자 UI 스타일 추가)
+# [2] 모바일 7열 고정 및 레이아웃 최적화 CSS
 st.markdown("""
     <style>
+    /* 배경 및 기본 폰트 */
     .stApp { background-color: #0E1117; color: #E0E0E0; }
-    .calendar-card { background-color: #1A1D24; border: 1px solid #36393E; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
-    .admin-box { background-color: #262730; border: 1px dashed #FF4B4B; padding: 15px; border-radius: 10px; margin-top: 20px; }
+    
+    /* 모바일에서 7열 강제 유지 핵심 로직 */
+    [data-testid="column"] {
+        width: 13% !important;
+        flex: 1 1 13% !important;
+        min-width: 13% !important;
+        padding: 2px !important; /* 모바일은 여백을 줄여야 칸이 안 밀림 */
+    }
+
+    /* 달력 카드 스타일 */
+    .calendar-card {
+        background-color: #1A1D24; border: 1px solid #36393E;
+        border-radius: 8px; padding: 10px; margin-bottom: 15px;
+    }
+
+    /* 버튼 크기 및 텍스트 최적화 (모바일 배려) */
+    .stButton > button {
+        width: 100% !important; 
+        height: 60px !important; /* 높이를 조금 줄임 */
+        background: #161920 !important; border: 1px solid #262730 !important;
+        font-size: 0.75rem !important; /* 텍스트 크기 축소 */
+        padding: 0px !important;
+        line-height: 1.2 !important;
+    }
+
+    /* 8명 매칭 시 황금 효과 */
     div.match-gold button {
         background: linear-gradient(135deg, #443714 0%, #1A1D24 100%) !important;
-        border: 2px solid #FFD700 !important; color: #FFD700 !important; font-weight: 900 !important;
+        border: 1px solid #FFD700 !important; color: #FFD700 !important;
     }
-    .stButton > button { width: 100% !important; height: 85px !important; background: #161920 !important; border: 1px solid #262730 !important; }
+
+    /* 헤더 요일 텍스트 크기 */
+    .calendar-table th { font-size: 0.65rem; color: #888; text-align: center; }
+    .sun-text { color: #FF4B4B !important; }
+    
+    /* 타임라인 차트 높이 조절 */
+    .js-plotly-plot { height: 250px !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# [3] 데이터 연동 함수 (명단 전용 Sheet2 추가)
+# [3] 데이터 연동 (동일)
 def get_sheets():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gspread"], scope)
         client = gspread.authorize(creds)
         doc = client.open("AION2_Raid_Data")
-        return doc.get_worksheet(0), doc.get_worksheet(1) # Sheet1: 일정, Sheet2: 명단
+        return doc.get_worksheet(0), doc.get_worksheet(1)
     except: return None, None
 
 @st.cache_data(ttl=5)
@@ -53,7 +84,7 @@ def load_raid_data():
 def load_member_list():
     _, s2 = get_sheets()
     if s2:
-        members = s2.col_values(1)[1:] # 첫 줄(헤더) 제외
+        members = s2.col_values(1)[1:]
         return members if members else ["공대장"]
     return ["공대장"]
 
@@ -63,40 +94,26 @@ MEMBER_LIST = load_member_list()
 if 'view_date' not in st.session_state:
     st.session_state.view_date = today
 
-# [4] 사이드바: 관리자 모드 및 일정 등록
+# [4] 사이드바 (기존 관리자 모드 포함)
 with st.sidebar:
-    st.markdown("<h1 style='color:#FF4B4B;'>🛡️ AION2 본부</h1>", unsafe_allow_html=True)
-    
-    # --- 관리자 로그인 섹션 ---
+    st.markdown("<h3 style='color:#FF4B4B;'>🛡️ AION2 본부</h3>", unsafe_allow_html=True)
     with st.expander("🔐 관리자 설정"):
-        pw = st.text_input("비밀번호 입력", type="password")
-        if pw == "1234": # 공대장님만의 비밀번호로 수정하세요
-            st.success("인증 성공: 명단 수정 가능")
-            new_name = st.text_input("새 대원 이름")
-            if st.button("➕ 대원 추가"):
-                _, s2 = get_sheets()
-                s2.append_row([new_name])
-                st.cache_data.clear()
-                st.rerun()
-            
-            target_del = st.selectbox("삭제할 대원", MEMBER_LIST)
-            if st.button("❌ 선택 삭제"):
-                _, s2 = get_sheets()
-                cell = s2.find(target_del)
-                s2.delete_rows(cell.row)
-                st.cache_data.clear()
-                st.rerun()
-        elif pw != "":
-            st.error("비밀번호가 틀렸습니다.")
+        pw = st.text_input("PW", type="password")
+        if pw == "1234":
+            new_name = st.text_input("대원 추가")
+            if st.button("➕"):
+                _, s2 = get_sheets(); s2.append_row([new_name])
+                st.cache_data.clear(); st.rerun()
+            target_del = st.selectbox("대원 삭제", MEMBER_LIST)
+            if st.button("❌"):
+                _, s2 = get_sheets(); cell = s2.find(target_del)
+                s2.delete_rows(cell.row); st.cache_data.clear(); st.rerun()
 
-    st.divider()
-    
-    # --- 일반 일정 등록 섹션 ---
-    reg_date = st.date_input("📅 날짜 선택", st.session_state.view_date)
-    name = st.selectbox("👤 본인 이름 선택", MEMBER_LIST)
+    reg_date = st.date_input("📅 날짜", st.session_state.view_date)
+    name = st.selectbox("👤 이름", MEMBER_LIST)
     c1, c2 = st.columns(2)
-    with c1: s_time = st.number_input("시작(시)", 0, 23, 22)
-    with c2: e_time = st.number_input("종료(시)", 0, 23, 2)
+    with c1: s_time = st.number_input("시작", 0, 23, 22)
+    with c2: e_time = st.number_input("종료", 0, 23, 2)
     
     if st.button("🚀 일정 확정"):
         s1, _ = get_sheets()
@@ -110,10 +127,9 @@ with st.sidebar:
                 else: rows.append(r)
             if not found: rows.append([str(reg_date), name, s_time, e_time])
             s1.update('A1', rows)
-            st.cache_data.clear()
-            st.rerun()
+            st.cache_data.clear(); st.rerun()
 
-# [5] 메인 화면 (달력 그리기 로직 - 기존과 동일)
+# [5] 달력 함수 (모바일용 가독성 개선)
 def check_8man_match(day_df):
     if len(day_df) < 8: return False
     timeline = np.zeros(48)
@@ -125,8 +141,14 @@ def check_8man_match(day_df):
 
 def draw_calendar(year, month, data_df):
     st.markdown(f'<div class="calendar-card">', unsafe_allow_html=True)
-    st.markdown(f"<h3 style='text-align:center; color:#FFD700;'>{year}년 {month}월</h3>", unsafe_allow_html=True)
-    st.markdown('<table style="width:100%; text-align:center; color:#888;"><tr><th>SUN</th><th>MON</th><th>TUE</th><th>WED</th><th>THU</th><th>FRI</th><th>SAT</th></tr></table>', unsafe_allow_html=True)
+    st.markdown(f"<h5 style='text-align:center; color:#FFD700; margin-bottom:10px;'>{year}년 {month}월</h5>", unsafe_allow_html=True)
+    
+    # 요일 헤더
+    header_cols = st.columns(7)
+    days_ko = ["일", "월", "화", "수", "목", "금", "토"]
+    for i, d in enumerate(days_ko):
+        color = "#FF4B4B" if i == 0 else "#888"
+        header_cols[i].markdown(f"<p style='text-align:center; font-size:0.7rem; color:{color}; font-weight:bold;'>{d}</p>", unsafe_allow_html=True)
     
     cal = calendar.monthcalendar(year, month)
     summary = {}
@@ -143,29 +165,32 @@ def draw_calendar(year, month, data_df):
                 if day != 0:
                     info = summary.get(day, {'count': 0, 'is_match': False})
                     c_class = "match-gold" if info['is_match'] else ""
-                    label = f"{day}\n\n" + (f"👥{info['count']}" if info['count']>0 else "") + (" 🏆" if info['is_match'] else "")
+                    # 모바일 가독성을 위해 텍스트 간소화
+                    label = f"{day}\n" + (f"👥{info['count']}" if info['count']>0 else "") + ("🏆" if info['is_match'] else "")
                     st.markdown(f'<div class="{c_class}">', unsafe_allow_html=True)
                     if st.button(label, key=f"btn_{year}_{month}_{day}"):
                         st.session_state.view_date = datetime.date(year, month, day)
                         st.rerun()
                     st.markdown('</div>', unsafe_allow_html=True)
+                else: st.empty()
     st.markdown('</div>', unsafe_allow_html=True)
 
-# 메인 레이아웃 실행
+# 메인 실행
 t_month = today.replace(day=1)
 n_month = (t_month + timedelta(days=32)).replace(day=1)
-col_l, col_r = st.columns(2)
-with col_l: draw_calendar(t_month.year, t_month.month, df)
-with col_r: draw_calendar(n_month.year, n_month.month, df)
 
-# 하단 타임라인 상세
-st.write("---")
+# 모바일에서는 두 달을 세로로 배치하는 것이 보기에 좋으므로 컬럼 없이 순차적 호출
+draw_calendar(t_month.year, t_month.month, df)
+draw_calendar(n_month.year, n_month.month, df)
+
+# 타임라인
 sel = st.session_state.view_date
 day_df = df[df['날짜'] == sel].copy() if not df.empty else pd.DataFrame()
 if not day_df.empty:
-    st.markdown(f"### 📊 {sel} 타임라인")
+    st.markdown(f"<h6>📊 {sel}</h6>", unsafe_allow_html=True)
     base = datetime.datetime.combine(sel, datetime.time.min)
     day_df['start_dt'] = day_df['시작'].apply(lambda x: base + datetime.timedelta(hours=int(x)))
     day_df['end_dt'] = day_df.apply(lambda r: base + datetime.timedelta(days=(1 if int(r['종료']) <= int(r['시작']) else 0), hours=int(r['종료'])), axis=1)
     fig = px.timeline(day_df, x_start="start_dt", x_end="end_dt", y="이름", color="이름", template="plotly_dark")
+    fig.update_layout(showlegend=False, margin=dict(l=0, r=0, t=0, b=0))
     st.plotly_chart(fig, use_container_width=True)
