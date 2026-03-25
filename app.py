@@ -6,100 +6,107 @@ import datetime
 import calendar
 import plotly.express as px
 
-# --- 1. 페이지 설정 및 프리미엄 CSS ---
+# --- 1. 페이지 설정 및 격자 고정 CSS ---
 st.set_page_config(page_title="AION2 레이드 조율실", layout="wide")
 
 st.markdown("""
     <style>
-    /* 배경 및 기본 폰트 */
     .stApp { background-color: #0E1117; color: #E0E0E0; }
     
-    /* 고정 격자 달력 스타일 (사진 피드백 반영) */
-    .calendar-container {
-        display: grid;
-        grid-template-columns: repeat(7, 1fr);
-        border: 1px solid #262730;
-        background-color: #161920;
+    /* 버튼을 정사각형 격자로 강제 고정 */
+    div[data-testid="stColumn"] > div {
+        padding: 2px !important;
     }
-    .calendar-cell {
-        border: 1px solid #262730;
-        min-height: 120px; /* 높이 고정 */
-        padding: 10px;
-        position: relative;
-    }
-    .date-header { font-size: 1.5rem; font-weight: bold; color: #E0E0E0; }
-    .status-text { font-size: 0.9rem; margin-top: 10px; color: #888; }
-    .full-party { background-color: #1e1e10 !important; border: 2px solid #FFD700 !important; }
-    .selected-day { background-color: #262730 !important; border: 2px solid #FF4B4B !important; }
     
-    /* 그래프 가독성 향상 */
-    .plot-container { border-radius: 10px; overflow: hidden; }
+    .stButton > button {
+        width: 100% !important;
+        height: 100px !important; /* 높이 고정 */
+        border-radius: 5px !important;
+        border: 1px solid #262730 !important;
+        background-color: #161920 !important;
+        display: block !important;
+        transition: all 0.2s;
+    }
+    
+    /* 마우스 올렸을 때 및 선택 시 효과 */
+    .stButton > button:hover {
+        border-color: #FF4B4B !important;
+        background-color: #1e222b !important;
+    }
+    
+    /* 8인 풀파티 날짜 강조 */
+    .full-party-btn > div > div > button {
+        border: 2px solid #FFD700 !important;
+        color: #FFD700 !important;
+    }
+
+    /* 선택된 날짜 강조 */
+    .selected-btn > div > div > button {
+        border: 2px solid #FF4B4B !important;
+        background-color: #262730 !important;
+    }
+
+    /* 버튼 내 텍스트 정렬 */
+    .stButton > button p {
+        font-size: 1.2rem !important;
+        font-weight: bold !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. 구글 시트 연결 (인증 강화) ---
+# --- 2. 구글 시트 연결 (인증 유지) ---
 def get_gspread_client():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
         creds_dict = st.secrets["gspread"]
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-        # 세션이 끊기지 않도록 매번 새 클라이언트를 반환하거나 캐시를 조절합니다.
         return gspread.authorize(creds)
     except Exception as e:
-        st.error(f"구글 인증 오류: {e}")
+        st.error(f"인증 오류: {e}")
         st.stop()
 
-@st.cache_data(ttl=10) # 짧은 TTL로 실시간성 확보 및 세션 유지
+@st.cache_data(ttl=10)
 def load_data():
     client = get_gspread_client()
     try:
-        # 시트 이름이 'AION2_Raid_Data'인지 확인 필수
-        spreadsheet = client.open("AION2_Raid_Data")
-        sheet = spreadsheet.sheet1
+        sheet = client.open("AION2_Raid_Data").sheet1
         data = sheet.get_all_records()
         return pd.DataFrame(data), sheet
-    except Exception as e:
-        # 에러 발생 시 빈 데이터프레임 반환하여 앱 중단 방지
+    except:
         return pd.DataFrame(), None
 
 df, sheet = load_data()
 
-# --- 3. 사이드바 (등록 섹션) ---
+# --- 3. 사이드바 (일정 등록) ---
 with st.sidebar:
-    st.markdown("<h1 style='color:#FF4B4B; text-align:center;'>🛡️ AION2</h1>", unsafe_allow_html=True)
-    st.write("---")
+    st.markdown("<h2 style='color:#FF4B4B;'>🛡️ AION2</h2>", unsafe_allow_html=True)
+    fixed_year = 2026
+    # 기본 날짜 설정
+    if 'target_date' not in st.session_state:
+        st.session_state.target_date = datetime.date(fixed_year, 3, 25)
     
-    # 2026년 기준 날짜 선택
-    fixed_date = datetime.date(2026, 3, 25)
-    selected_date = st.date_input("📅 레이드 날짜 선택", fixed_date)
-    date_str = str(selected_date)
+    reg_date = st.date_input("등록할 날짜", st.session_state.target_date)
+    name = st.selectbox("대원명", [f"유저{i}" for i in range(1, 9)])
+    time_range = st.select_slider("시간(시)", options=list(range(25)), value=(20, 23))
     
-    name = st.selectbox("👤 대원 이름", [f"유저{i}" for i in range(1, 9)])
-    time_range = st.select_slider("⏰ 접속 가능 시간", options=list(range(25)), value=(20, 23))
-    
-    if st.button("🚀 일정 확정 (시트 저장)"):
-        # 버튼 클릭 시점에 새로 클라이언트를 호출하여 인증 만료 방지
+    if st.button("🚀 일정 확정"):
         client = get_gspread_client()
-        try:
-            curr_sheet = client.open("AION2_Raid_Data").sheet1
-            all_values = curr_sheet.get_all_values()
-            
-            # 기존 데이터 중복 삭제
-            for i, row in enumerate(all_values):
-                if len(row) >= 2 and row[0] == date_str and row[1] == name:
-                    curr_sheet.delete_rows(i + 1)
-            
-            curr_sheet.append_row([date_str, name, time_range[0], time_range[1]])
-            st.success(f"{name}님 일정 저장 완료!")
-            st.cache_data.clear()
-            st.rerun()
-        except Exception as e:
-            st.error(f"저장 중 에러 발생: {e}")
+        curr_sheet = client.open("AION2_Raid_Data").sheet1
+        all_v = curr_sheet.get_all_values()
+        date_str = str(reg_date)
+        for i, row in enumerate(all_v):
+            if len(row) >= 2 and row[0] == date_str and row[1] == name:
+                curr_sheet.delete_rows(i + 1)
+        curr_sheet.append_row([date_str, name, time_range[0], time_range[1]])
+        st.success("저장되었습니다!")
+        st.cache_data.clear()
+        st.rerun()
 
-# --- 4. 메인 화면: 반듯한 격자형 달력 ---
-st.title("🛡️ AION2 공격대 실시간 조율실")
-cal_year, cal_month = selected_date.year, selected_date.month
-st.subheader(f"🗓️ {cal_year}년 {cal_month}월 일정 현황")
+# --- 4. 메인 달력: 클릭 가능한 진짜 격자 ---
+st.title("AION2 공격대 실시간 조율실")
+view_date = st.session_state.target_date
+cal_year, cal_month = view_date.year, view_date.month
+st.subheader(f"📅 {cal_year}년 {cal_month}월 (날짜를 클릭하여 현황 확인)")
 
 if not df.empty:
     df['날짜'] = pd.to_datetime(df['날짜']).dt.date
@@ -108,70 +115,56 @@ if not df.empty:
     
     # 요일 헤더
     days = ["일", "월", "화", "수", "목", "금", "토"]
-    cols = st.columns(7)
+    h_cols = st.columns(7)
     for i, d in enumerate(days):
-        color = "#FF4B4B" if i == 0 else "#E0E0E0"
-        cols[i].markdown(f"<p style='text-align:center; font-weight:bold; color:{color};'>{d}</p>", unsafe_allow_html=True)
+        h_cols[i].markdown(f"<p style='text-align:center; font-weight:bold;'>{d}</p>", unsafe_allow_html=True)
 
-    # 달력 격자 출력 (모든 칸 크기 고정)
+    # 격자 버튼 생성
     for week in cal:
         cols = st.columns(7)
         for i, day in enumerate(week):
-            with cols[i]:
-                if day == 0:
-                    st.markdown("<div class='calendar-cell' style='opacity: 0.1;'></div>", unsafe_allow_html=True)
-                else:
-                    this_date = datetime.date(cal_year, cal_month, day)
-                    cnt = summary[summary['날짜'] == this_date]['인원'].values[0] if not summary[summary['날짜'] == this_date].empty else 0
-                    
-                    # 스타일 클래스
-                    box_class = "calendar-cell"
-                    if cnt >= 8: box_class += " full-party"
-                    if this_date == selected_date: box_class += " selected-day"
-                    
-                    status_html = f"<b style='color:#FFD700;'>🔥 FULL</b>" if cnt >= 8 else f"👥 {cnt}명" if cnt > 0 else ""
-                    
-                    st.markdown(f"""
-                        <div class='{box_class}'>
-                            <div class='date-header'>{day}</div>
-                            <div class='status-text'>{status_html}</div>
-                        </div>
-                    """, unsafe_allow_html=True)
+            if day == 0:
+                cols[i].markdown("<div style='height:100px;'></div>", unsafe_allow_html=True)
+            else:
+                this_date = datetime.date(cal_year, cal_month, day)
+                cnt = summary[summary['날짜'] == this_date]['인원'].values[0] if not summary[summary['날짜'] == this_date].empty else 0
+                
+                # 버튼 레이블 및 스타일 클래스
+                label = f"{day}\n({cnt}명)"
+                if cnt >= 8: label = f"{day}\n🔥FULL"
+                
+                # 풀파티/선택 상태에 따른 CSS 컨테이너
+                container_class = ""
+                if cnt >= 8: container_class = "full-party-btn"
+                if this_date == st.session_state.target_date: container_class = "selected-btn"
+                
+                with cols[i]:
+                    st.markdown(f"<div class='{container_class}'>", unsafe_allow_html=True)
+                    if st.button(label, key=f"btn_{day}"):
+                        st.session_state.target_date = this_date
+                        st.rerun()
+                    st.markdown("</div>", unsafe_allow_html=True)
 
-# --- 5. 상세 참여 타임라인 (대왕 폰트 버전) ---
+# --- 5. 상세 타임라인 (빅폰트) ---
 st.write("---")
-st.markdown(f"### 📊 {selected_date} 상세 타임라인")
+sel_date = st.session_state.target_date
+st.markdown(f"### 📊 {sel_date} 참여 타임라인")
 
-day_df = df[df['날짜'] == selected_date].copy()
+day_df = df[df['날짜'] == sel_date].copy()
 
 if not day_df.empty:
     def to_dt(h): return datetime.datetime(2026, 1, 1, min(int(h), 23), 59 if h==24 else 0)
-
+    
     fig = px.timeline(
-        day_df, 
-        x_start=day_df['시작'].apply(to_dt),
-        x_end=day_df['종료'].apply(to_dt),
-        y="이름", color="이름",
-        template="plotly_dark",
-        color_discrete_sequence=px.colors.qualitative.Pastel
+        day_df, x_start=day_df['시작'].apply(to_dt), x_end=day_df['종료'].apply(to_dt),
+        y="이름", color="이름", template="plotly_dark"
     )
-
     fig.update_layout(
-        xaxis=dict(
-            title="", tickformat="%H시", dtick=3600000 * 2,
-            tickfont=dict(size=15),
-            range=[datetime.datetime(2026, 1, 1, 0), datetime.datetime(2026, 1, 2, 0)]
-        ),
-        yaxis=dict(
-            title="", autorange="reversed",
-            tickfont=dict(size=22, color="white", family="Arial Black") # 이름을 압도적으로 크게 설정
-        ),
-        showlegend=False, height=450, margin=dict(l=10, r=10, t=10, b=10)
+        xaxis=dict(title="", tickformat="%H시", dtick=3600000 * 2, tickfont=dict(size=14),
+                   range=[datetime.datetime(2026, 1, 1, 0), datetime.datetime(2026, 1, 2, 0)]),
+        yaxis=dict(title="", autorange="reversed", tickfont=dict(size=20, color="white")),
+        showlegend=False, height=400, margin=dict(l=10, r=10, t=10, b=10)
     )
-    
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-    
-    if len(day_df) >= 8:
-        st.success("🔥 8인 풀파티 매칭 완료! 세로로 막대가 8개 겹치는 시간에 출발하세요.")
+    st.plotly_chart(fig, use_container_width=True)
 else:
-    st.info("선택한 날짜에 등록된 대원이 없습니다. 사이드바에서 일정을 추가해 보세요.")
+    st.info("이날은 등록된 인원이 없습니다.")
