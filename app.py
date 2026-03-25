@@ -83,7 +83,7 @@ if 'view_date' not in st.session_state:
 
 # --- 3. 사이드바: 입력창 (동일) ---
 with st.sidebar:
-    st.markdown("<h1 style='color:#FF4B4B;'>🛡️ AION2 본부</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='color:#FF4B4B;'>🛡️ AION2 레이드</h1>", unsafe_allow_html=True)
     st.write("---")
     
     reg_date = st.date_input("📅 날짜 선택", st.session_state.view_date)
