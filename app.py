@@ -4,8 +4,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import datetime
 import calendar
-import matplotlib.pyplot as plt
-import numpy as np
+import plotly.express as px
 
 # --- 1. 구글 시트 연결 설정 ---
 def get_gspread_client():
@@ -21,6 +20,7 @@ def get_gspread_client():
 def load_data():
     client = get_gspread_client()
     try:
+        # 시트 이름을 공대장님의 실제 시트 이름과 일치시키세요.
         sheet = client.open("AION2_Raid_Data").sheet1
         data = sheet.get_all_records()
         return pd.DataFrame(data), sheet
@@ -38,12 +38,13 @@ df, sheet = load_data()
 with st.sidebar:
     st.header("📝 내 일정 등록")
     fixed_year = 2026
+    # 공대장님 요청대로 2026년 날짜로 기본값 설정
     input_date = st.date_input("레이드 날짜 선택", datetime.date(fixed_year, 3, 25))
     date_str = str(input_date)
     
     members = [f"유저{i}" for i in range(1, 9)]
     name = st.selectbox("본인 이름 선택", members)
-    time_range = st.select_slider("접속 가능 시간대", options=list(range(25)), value=(20, 23))
+    time_range = st.select_slider("접속 가능 시간대 (시)", options=list(range(25)), value=(20, 23))
     
     if st.button("🚀 일정 확정 (시트 저장)"):
         if sheet is not None:
@@ -66,59 +67,68 @@ if not df.empty:
     summary = df.groupby('날짜').size().reset_index(name='인원')
     cal = calendar.monthcalendar(cal_year, cal_month)
     days = ["일", "월", "화", "수", "목", "금", "토"]
+    
     cols_h = st.columns(7)
-    for i, d in enumerate(days): cols_h[i].markdown(f"<p style='text-align:center; color:#FF4B4B;'><b>{d}</b></p>", unsafe_allow_html=True)
+    for i, d in enumerate(days):
+        cols_h[i].markdown(f"<p style='text-align:center; color:#FF4B4B;'><b>{d}</b></p>", unsafe_allow_html=True)
 
     for week in cal:
         cols = st.columns(7)
         for i, day in enumerate(week):
             if day != 0:
                 t_date = datetime.date(cal_year, cal_month, day)
-                cnt = summary[summary['날짜'] == t_date]['인원'].values[0] if not summary[summary['날짜'] == t_date].empty else 0
+                cnt_row = summary[summary['날짜'] == t_date]
+                cnt = cnt_row['인원'].values[0] if not cnt_row.empty else 0
                 icon = "🔥" if cnt >= 8 else "✅" if cnt > 0 else "⚪"
-                if cols[i].button(f"{day}\n({icon}{cnt}명)", key=f"d_{day}", use_container_width=True, type="primary" if t_date == input_date else "secondary"):
+                
+                # 달력 버튼
+                if cols[i].button(f"{day}\n({icon}{cnt}명)", key=f"d_{day}", use_container_width=True, 
+                                  type="primary" if t_date == input_date else "secondary"):
                     st.session_state.selected_date = t_date
 
-# --- 5. 상세 참여 현황 (정밀 시계형 차트) ---
+# --- 5. 상세 참여 현황 (가로 바 타임라인) ---
 st.write("---")
 display_date = st.session_state.get('selected_date', input_date)
-st.markdown(f"### 🔍 {display_date} 24시 정밀 조율 시계")
+st.markdown(f"### 📊 {display_date} 시간대별 겹침 확인")
 
 day_df = df[df['날짜'] == display_date]
 
 if not day_df.empty:
-    # --- Matplotlib을 이용한 정밀 원형 시계 생성 ---
-    fig, ax = plt.subplots(figsize=(8, 8), subplot_kw={'projection': 'polar'})
-    ax.set_theta_direction(-1) # 시계 방향
-    ax.set_theta_offset(np.pi/2.0) # 0시를 12시 방향으로
+    # Plotly용 데이터 정리 (가로 바 형식)
+    fig = px.timeline(
+        day_df, 
+        x_start=day_df['시작'].apply(lambda x: datetime.datetime(2026, 1, 1, int(x))),
+        x_end=day_df['종료'].apply(lambda x: datetime.datetime(2026, 1, 1, int(x))),
+        y="이름",
+        color="이름",
+        text="이름",
+        labels={"이름": "공격대원"},
+        template="plotly_dark"
+    )
 
-    # 24시간 눈금 설정
-    hours = np.arange(0, 24, 1)
-    theta = np.linspace(0, 2*np.pi, 25)
-    ax.set_xticks(np.linspace(0, 2*np.pi, 24, endpoint=False))
-    ax.set_xticklabels([f"{h}시" for h in hours], fontsize=10, color="white")
+    # X축(시간) 설정: 0시부터 24시까지 명확하게 표시
+    fig.update_layout(
+        xaxis=dict(
+            title="접속 시간 (시)",
+            tickformat="%H시",
+            dtick=3600000, # 1시간 간격 (밀리초)
+            range=[datetime.datetime(2026, 1, 1, 0), datetime.datetime(2026, 1, 1, 24)]
+        ),
+        yaxis=dict(title="대원 명단", autorange="reversed"),
+        showlegend=False,
+        height=400
+    )
     
-    # 대원별 시간 표시 (동심원 형태로 층을 쌓음)
-    for i, (idx, row) in enumerate(day_df.iterrows()):
-        start_rad = (row['시작'] / 24) * 2 * np.pi
-        end_rad = (row['종료'] / 24) * 2 * np.pi
-        # 각 대원마다 반지름 위치를 다르게 해서 겹침 방지
-        r = [0.4 + (i * 0.07), 0.4 + (i * 0.07)]
-        ax.plot([start_rad, end_rad], r, lw=6, label=row['이름'], solid_capstyle='round')
-        ax.text(start_rad, r[0], row['이름'], fontsize=8, color="white")
-
-    ax.set_yticklabels([]) # 반지름 숫자 제거
-    ax.set_rmax(1.1)
-    ax.grid(True, alpha=0.3)
-    fig.patch.set_facecolor('#0E1117') # Streamlit 다크모드 배경색
-    ax.set_facecolor('#0E1117')
+    st.plotly_chart(fig, use_container_width=True)
     
-    st.pyplot(fig)
-    
-    if len(day_df) >= 8:
+    # 인원수 체크
+    count = len(day_df)
+    if count >= 8:
         st.balloons()
-        st.success("🔥 8인 매칭 완료! 위 시계에서 겹치는 구간을 확인하세요!")
+        st.success(f"🔥 현재 8명 풀파티! 위 그래프에서 세로로 꽉 찬 시간대에 출발하세요!")
+    else:
+        st.warning(f"현재 {count}명 대기 중 (8인까지 {8-count}명 남음)")
 else:
-    st.info("등록된 인원이 없습니다.")
+    st.info("이날은 아직 등록된 일정이 없습니다.")
 
-st.caption("AION2 RAID - 정밀 24시 레이어드 클락")
+st.caption("AION2 RAID - 가로 바 타임라인 시스템")
