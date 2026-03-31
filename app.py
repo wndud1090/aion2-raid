@@ -27,7 +27,7 @@ def connect():
 client = connect()
 
 # 🔥 여기 본인 시트 URL로 바꾸세요 (강력추천)
-sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/여기에ID/edit")
+sheet = client.sheet = client.open("AION2 RAID")
 
 # 🔥 시트 탭 이름 확인
 schedule_ws = sheet.worksheet("시트1")
