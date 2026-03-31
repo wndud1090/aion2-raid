@@ -2,10 +2,10 @@ import streamlit as st
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import datetime
-import calendar
+from streamlit_calendar import calendar
 
 # =========================
-# 구글 시트 연결 (secrets 사용)
+# 구글 시트 연결
 # =========================
 @st.cache_resource
 def connect():
@@ -26,8 +26,10 @@ def connect():
 
 client = connect()
 
-# 🔥 여기 본인 시트 이름으로 수정 필요
-sheet = client.open("AION2 RAID")
+# 🔥 여기 본인 시트 URL로 바꾸세요 (강력추천)
+sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/여기에ID/edit")
+
+# 🔥 시트 탭 이름 확인
 schedule_ws = sheet.worksheet("시트1")
 
 
@@ -36,13 +38,12 @@ schedule_ws = sheet.worksheet("시트1")
 # =========================
 st.title("AION2 레이드 일정 관리")
 
-# ✅ 2. 오늘 날짜 표시
 today = datetime.date.today()
 st.write(f"📅 오늘 날짜: {today}")
 
 
 # =========================
-# ✅ 1 + 4 사이드바 UI
+# 사이드바 (입력)
 # =========================
 members = ["탱커", "힐러", "딜러1", "딜러2", "딜러3"]
 
@@ -53,7 +54,6 @@ with st.sidebar:
     time = st.time_input("시간 선택")
     member = st.selectbox("공대원 선택", members)
 
-    # ✅ 4. 불가능 체크
     is_impossible = st.checkbox("❌ 이 날 불가능")
 
     if st.button("저장"):
@@ -70,52 +70,91 @@ with st.sidebar:
 
 
 # =========================
-# ✅ 3. 달력 (이번달 + 다음달)
+# 🔥 달력 데이터 생성
+# =========================
+rows = schedule_ws.get_all_values()
+
+events = []
+
+for row in rows:
+    try:
+        date_val = row[0]
+        time_val = row[1]
+        member_val = row[2]
+        status_val = row[3]
+
+        title = f"{member_val}"
+
+        # ❌ 불가능 표시 강조
+        if status_val == "불가능":
+            title = f"❌ {member_val}"
+
+        events.append({
+            "title": title,
+            "start": f"{date_val}T{time_val}",
+        })
+
+    except:
+        pass
+
+
+# =========================
+# 🔥 클릭 가능한 달력
 # =========================
 st.subheader("📆 일정 달력")
 
-col1, col2 = st.columns(2)
+calendar_options = {
+    "initialView": "multiMonthYear",  # 🔥 2개월 보기
+    "locale": "ko",
+    "height": 700,
+    "views": {
+        "multiMonthYear": {
+            "type": "multiMonth",
+            "duration": {"months": 2}
+        }
+    }
+}
 
-# 이번달
-with col1:
-    st.markdown("### 이번달")
-    cal1 = calendar.month(today.year, today.month)
-    st.text(cal1)
-
-# 다음달 계산
-next_month = today.month + 1
-next_year = today.year
-
-if next_month == 13:
-    next_month = 1
-    next_year += 1
-
-with col2:
-    st.markdown("### 다음달")
-    cal2 = calendar.month(next_year, next_month)
-    st.text(cal2)
+state = calendar(events=events, options=calendar_options)
 
 
 # =========================
-# 일정 출력
+# 🔥 날짜 클릭 시 상세 출력
+# =========================
+if state.get("dateClick"):
+    clicked_date = state["dateClick"]["date"]
+
+    st.subheader(f"📅 {clicked_date} 일정")
+
+    found = False
+
+    for row in rows:
+        try:
+            if row[0] == clicked_date:
+                found = True
+                if row[3] == "불가능":
+                    st.write(f"❌ {row[2]} / {row[1]}")
+                else:
+                    st.write(f"✅ {row[2]} / {row[1]}")
+        except:
+            pass
+
+    if not found:
+        st.write("일정 없음")
+
+
+# =========================
+# 전체 일정 리스트
 # =========================
 st.subheader("📋 전체 일정")
-
-rows = schedule_ws.get_all_values()
 
 if rows:
     for row in rows:
         try:
-            date_val = row[0]
-            time_val = row[1]
-            member_val = row[2]
-            status_val = row[3]
-
-            if status_val == "불가능":
-                st.write(f"❌ {date_val} / {time_val} - {member_val}")
+            if row[3] == "불가능":
+                st.write(f"❌ {row[0]} / {row[1]} - {row[2]}")
             else:
-                st.write(f"✅ {date_val} / {time_val} - {member_val}")
-
+                st.write(f"✅ {row[0]} / {row[1]} - {row[2]}")
         except:
             pass
 else:
