@@ -25,11 +25,7 @@ def connect():
 
 
 client = connect()
-
-# ✅ 원래 잘 되던 방식으로 복구
 sheet = client.open("AION2 RAID")
-
-# ✅ 시트 탭 이름 확인
 schedule_ws = sheet.worksheet("시트1")
 
 
@@ -70,7 +66,7 @@ with st.sidebar:
 
 
 # =========================
-# 시트 데이터 → 달력 이벤트 변환
+# 데이터 → 이벤트 변환
 # =========================
 rows = schedule_ws.get_all_values()
 
@@ -78,85 +74,102 @@ events = []
 
 for row in rows:
     try:
-        date_val = row[0]
-        time_val = row[1]
-        member_val = row[2]
-        status_val = row[3]
-
-        title = member_val
-
-        if status_val == "불가능":
-            title = f"❌ {member_val}"
+        title = row[2]
+        if row[3] == "불가능":
+            title = f"❌ {row[2]}"
 
         events.append({
             "title": title,
-            "start": f"{date_val}T{time_val}",
+            "start": f"{row[0]}T{row[1]}",
         })
-
     except:
         pass
 
 
 # =========================
-# 🔥 가로 2달 달력
+# 🔥 가로 2달 강제 배치
 # =========================
 st.subheader("📆 일정 달력")
 
-calendar_options = {
-    "initialView": "multiMonthYear",
-    "locale": "ko",
-    "height": 500,
-    "fixedWeekCount": False,
-    "views": {
-        "multiMonthYear": {
-            "type": "multiMonth",
-            "duration": {"months": 2},
-            "multiMonthMaxColumns": 2
-        }
-    }
-}
+col1, col2 = st.columns(2)
 
-state = calendar(events=events, options=calendar_options)
+# 이번달
+with col1:
+    st.markdown("### 이번달")
+
+    cal1 = calendar(
+        events=events,
+        options={
+            "initialView": "dayGridMonth",
+            "initialDate": today.strftime("%Y-%m-01"),
+            "locale": "ko",
+            "height": 500,
+        },
+    )
+
+# 다음달 계산
+next_month = today.month + 1
+next_year = today.year
+
+if next_month == 13:
+    next_month = 1
+    next_year += 1
+
+next_date = f"{next_year}-{str(next_month).zfill(2)}-01"
+
+# 다음달
+with col2:
+    st.markdown("### 다음달")
+
+    cal2 = calendar(
+        events=events,
+        options={
+            "initialView": "dayGridMonth",
+            "initialDate": next_date,
+            "locale": "ko",
+            "height": 500,
+        },
+    )
 
 
 # =========================
-# 날짜 클릭 시 상세 표시
+# 클릭 처리 (두 달 모두 대응)
 # =========================
-if state.get("dateClick"):
-    clicked_date = state["dateClick"]["date"]
+clicked_date = None
 
+if cal1.get("dateClick"):
+    clicked_date = cal1["dateClick"]["date"]
+
+if cal2.get("dateClick"):
+    clicked_date = cal2["dateClick"]["date"]
+
+if clicked_date:
     st.subheader(f"📅 {clicked_date} 일정")
 
     found = False
 
     for row in rows:
-        try:
-            if row[0] == clicked_date:
-                found = True
-                if row[3] == "불가능":
-                    st.write(f"❌ {row[2]} / {row[1]}")
-                else:
-                    st.write(f"✅ {row[2]} / {row[1]}")
-        except:
-            pass
+        if row[0] == clicked_date:
+            found = True
+            if row[3] == "불가능":
+                st.write(f"❌ {row[2]} / {row[1]}")
+            else:
+                st.write(f"✅ {row[2]} / {row[1]}")
 
     if not found:
         st.write("일정 없음")
 
 
 # =========================
-# 전체 일정 리스트
+# 전체 리스트
 # =========================
 st.subheader("📋 전체 일정")
 
-if rows:
-    for row in rows:
-        try:
-            if row[3] == "불가능":
-                st.write(f"❌ {row[0]} / {row[1]} - {row[2]}")
-            else:
-                st.write(f"✅ {row[0]} / {row[1]} - {row[2]}")
-        except:
-            pass
-else:
-    st.write("등록된 일정 없음")
+for row in rows:
+    try:
+        if row[3] == "불가능":
+            st.write(f"❌ {row[0]} / {row[1]} - {row[2]}")
+        else:
+            st.write(f"✅ {row[0]} / {row[1]} - {row[2]}")
+    except:
+        pass
