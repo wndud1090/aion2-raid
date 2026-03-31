@@ -1,48 +1,8 @@
 import streamlit as st
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 import datetime
-from streamlit_calendar import calendar
+import calendar
 
 st.set_page_config(layout="wide")
-
-# =========================
-# CSS (깜빡임)
-# =========================
-st.markdown("""
-<style>
-@keyframes blink {
-  0% {opacity: 1;}
-  50% {opacity: 0.2;}
-  100% {opacity: 1;}
-}
-.blink {
-  animation: blink 1s infinite;
-  font-weight: bold;
-}
-</style>
-""", unsafe_allow_html=True)
-
-
-# =========================
-# 구글 시트 연결
-# =========================
-@st.cache_resource
-def connect():
-    scope = [
-        "https://spreadsheets.google.com/feeds",
-        "https://www.googleapis.com/auth/drive",
-    ]
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(
-        st.secrets["gcp_service_account"], scope
-    )
-    return gspread.authorize(creds)
-
-
-client = connect()
-sheet = client.open("AION2 RAID")
-schedule_ws = sheet.worksheet("시트1")
-
 
 # =========================
 # 상태
@@ -50,197 +10,126 @@ schedule_ws = sheet.worksheet("시트1")
 if "selected_dates" not in st.session_state:
     st.session_state.selected_dates = []
 
+if "current_date" not in st.session_state:
+    st.session_state.current_date = datetime.date.today().replace(day=1)
+
 
 # =========================
-# 공대원 색상
+# 더미 데이터 (나중에 구글시트 연결)
 # =========================
-member_colors = {
-    "탱커": "#ff9900",
-    "힐러": "#3399ff",
-    "딜러1": "#66cc66",
-    "딜러2": "#cc66ff",
-    "딜러3": "#ff6699",
-    "딜러4": "#00cccc",
-    "딜러5": "#9999ff",
-    "딜러6": "#ffcc00",
+date_status = {
+    "2026-03-10": "불가능",
+    "2026-03-12": "가능",
+    "2026-03-15": "전원가능",
 }
 
 
 # =========================
-# 데이터 로드
+# 날짜 포맷
 # =========================
-rows = schedule_ws.get_all_values()
-
-date_map = {}
-time_map = {}
-
-for row in rows:
-    try:
-        date_val = row[0]
-        time_val = row[1]
-        member = row[2]
-        status = row[3]
-
-        if date_val not in date_map:
-            date_map[date_val] = {"가능": [], "불가능": []}
-
-        date_map[date_val][status].append(member)
-
-        if status == "가능":
-            key = (date_val, time_val)
-            if key not in time_map:
-                time_map[key] = []
-            time_map[key].append(member)
-
-    except:
-        pass
+def format_date(y, m, d):
+    return f"{y}-{m:02d}-{d:02d}"
 
 
 # =========================
-# 이벤트 생성
+# 달력 생성 함수
 # =========================
-events = []
-TOTAL_MEMBERS = 8
+def render_month(year, month):
 
-for date_val, data in date_map.items():
+    cal = calendar.monthcalendar(year, month)
 
-    possible_count = len(data["가능"])
-    impossible_count = len(data["불가능"])
+    st.markdown(f"### {year}년 {month}월")
 
-    # ❌ 불가능 1명이라도 → 빨강
-    if impossible_count > 0:
-        events.append({
-            "start": date_val,
-            "display": "background",
-            "color": "#ff4d4d"
-        })
+    for week in cal:
+        cols = st.columns(7)
 
-    # 🟢 전원 가능
-    elif possible_count == TOTAL_MEMBERS:
-        events.append({
-            "start": date_val,
-            "display": "background",
-            "color": "#00ff99"
-        })
+        for i, day in enumerate(week):
+            if day == 0:
+                cols[i].write("")
+                continue
 
-    # 인원 수 표시
-    if possible_count > 0:
-        events.append({
-            "title": f"{possible_count}명",
-            "start": date_val,
-        })
+            date_str = format_date(year, month, day)
 
+            # 상태
+            is_selected = date_str in st.session_state.selected_dates
+            status = date_status.get(date_str, "")
 
-# =========================
-# 🔥 시간 겹침 (전원)
-# =========================
-for (date_val, time_val), members in time_map.items():
-    if len(members) == TOTAL_MEMBERS:
-        events.append({
-            "start": date_val,
-            "display": "background",
-            "color": "#FFD700"
-        })
+            # 색상
+            color = "#ffffff"
 
+            if status == "불가능":
+                color = "#ff4d4d"
+            elif status == "전원가능":
+                color = "#FFD700"
+            elif is_selected:
+                color = "#00cc66"
 
-# =========================
-# 공대원 개별 표시
-# =========================
-for row in rows:
-    try:
-        date_val = row[0]
-        time_val = row[1]
-        member = row[2]
-        status = row[3]
+            label = str(day)
 
-        if status == "가능":
-            events.append({
-                "title": member,
-                "start": f"{date_val}T{time_val}",
-                "color": member_colors.get(member, "#888")
-            })
+            if is_selected:
+                label = f"✔ {day}"
 
-    except:
-        pass
+            # 버튼
+            if cols[i].button(
+                label,
+                key=date_str,
+                use_container_width=True
+            ):
+                if is_selected:
+                    st.session_state.selected_dates.remove(date_str)
+                else:
+                    st.session_state.selected_dates.append(date_str)
+
+            # 색상 적용
+            cols[i].markdown(
+                f"""
+                <div style="
+                    background:{color};
+                    text-align:center;
+                    padding:8px;
+                    border-radius:8px;
+                    margin-top:-38px;
+                "></div>
+                """,
+                unsafe_allow_html=True
+            )
 
 
 # =========================
-# 🔥 선택 날짜 (✔ 무조건 표시)
+# 상단 컨트롤
 # =========================
-for d in st.session_state.selected_dates:
-    events.append({
-        "title": "✔",
-        "start": d,
-        "allDay": True,
-        "color": "#00cc66",
-        "textColor": "#ffffff",
-        "classNames": ["blink"]
-    })
+col1, col2, col3 = st.columns([1,2,1])
 
+with col1:
+    if st.button("◀ 이전"):
+        prev = st.session_state.current_date - datetime.timedelta(days=1)
+        st.session_state.current_date = prev.replace(day=1)
 
-# =========================
-# 달력
-# =========================
-calendar_data = calendar(
-    events=events,
-    options={
-        "initialView": "dayGridMonth",
-        "locale": "ko",
-        "height": 850,
-    },
-)
+with col3:
+    if st.button("다음 ▶"):
+        next_m = st.session_state.current_date + datetime.timedelta(days=32)
+        st.session_state.current_date = next_m.replace(day=1)
 
 
 # =========================
-# 클릭 → 토글
+# 두 달 표시
 # =========================
-if calendar_data.get("dateClick"):
-    clicked = calendar_data["dateClick"]["date"]
+base = st.session_state.current_date
 
-    if clicked in st.session_state.selected_dates:
-        st.session_state.selected_dates.remove(clicked)
-    else:
-        st.session_state.selected_dates.append(clicked)
+next_month = (base + datetime.timedelta(days=32)).replace(day=1)
+
+c1, c2 = st.columns(2)
+
+with c1:
+    render_month(base.year, base.month)
+
+with c2:
+    render_month(next_month.year, next_month.month)
 
 
 # =========================
-# 입력
+# 선택 결과
 # =========================
-members = list(member_colors.keys())
+st.markdown("### 선택된 날짜")
 
-with st.sidebar:
-    st.header("일정 입력")
-
-    member = st.selectbox("공대원", members)
-    time = st.time_input("시간")
-
-    is_impossible = st.checkbox("❌ 불가능")
-
-    if st.button("저장"):
-
-        if not st.session_state.selected_dates:
-            st.warning("날짜 선택 먼저")
-        else:
-            status = "불가능" if is_impossible else "가능"
-            rows = schedule_ws.get_all_values()
-
-            for d in st.session_state.selected_dates:
-
-                delete_index = []
-
-                for idx, row in enumerate(rows):
-                    if row[0] == d and row[2] == member:
-                        delete_index.append(idx + 1)
-
-                for i in reversed(delete_index):
-                    schedule_ws.delete_rows(i)
-
-                schedule_ws.append_row([
-                    d,
-                    time.strftime("%H:%M:%S"),
-                    member,
-                    status
-                ])
-
-            st.success("저장 완료")
-            st.session_state.selected_dates = []
+st.write(st.session_state.selected_dates)
