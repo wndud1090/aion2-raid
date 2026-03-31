@@ -7,17 +7,18 @@ from streamlit_calendar import calendar
 st.set_page_config(layout="wide")
 
 # =========================
-# CSS (깜빡임 효과)
+# CSS (깜빡임)
 # =========================
 st.markdown("""
 <style>
 @keyframes blink {
   0% {opacity: 1;}
-  50% {opacity: 0.3;}
+  50% {opacity: 0.2;}
   100% {opacity: 1;}
 }
 .blink {
   animation: blink 1s infinite;
+  font-weight: bold;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -80,19 +81,15 @@ for row in rows:
         member = row[2]
         status = row[3]
 
-        # 날짜 집계
         if date_val not in date_map:
             date_map[date_val] = {"가능": [], "불가능": []}
 
         date_map[date_val][status].append(member)
 
-        # 시간 집계 (핵심)
         if status == "가능":
             key = (date_val, time_val)
-
             if key not in time_map:
                 time_map[key] = []
-
             time_map[key].append(member)
 
     except:
@@ -110,7 +107,7 @@ for date_val, data in date_map.items():
     possible_count = len(data["가능"])
     impossible_count = len(data["불가능"])
 
-    # ❌ 1명이라도 불가능 → 빨강
+    # ❌ 불가능 1명이라도 → 빨강
     if impossible_count > 0:
         events.append({
             "start": date_val,
@@ -126,7 +123,7 @@ for date_val, data in date_map.items():
             "color": "#00ff99"
         })
 
-    # 인원 표시
+    # 인원 수 표시
     if possible_count > 0:
         events.append({
             "title": f"{possible_count}명",
@@ -135,15 +132,14 @@ for date_val, data in date_map.items():
 
 
 # =========================
-# 🔥 시간 겹침 체크 (핵심)
+# 🔥 시간 겹침 (전원)
 # =========================
 for (date_val, time_val), members in time_map.items():
-
     if len(members) == TOTAL_MEMBERS:
         events.append({
             "start": date_val,
             "display": "background",
-            "color": "#FFD700"  # 🔥 금색 (완전체)
+            "color": "#FFD700"
         })
 
 
@@ -161,7 +157,7 @@ for row in rows:
             events.append({
                 "title": member,
                 "start": f"{date_val}T{time_val}",
-                "color": member_colors.get(member, "#888888")
+                "color": member_colors.get(member, "#888")
             })
 
     except:
@@ -169,14 +165,16 @@ for row in rows:
 
 
 # =========================
-# 선택된 날짜 표시 (깜빡)
+# 🔥 선택 날짜 (✔ 무조건 표시)
 # =========================
 for d in st.session_state.selected_dates:
     events.append({
+        "title": "✔",
         "start": d,
-        "display": "background",
+        "allDay": True,
         "color": "#00cc66",
-        "classNames": ["blink"]  # 🔥 깜빡임
+        "textColor": "#ffffff",
+        "classNames": ["blink"]
     })
 
 
@@ -194,7 +192,7 @@ calendar_data = calendar(
 
 
 # =========================
-# 클릭 → 토글 선택
+# 클릭 → 토글
 # =========================
 if calendar_data.get("dateClick"):
     clicked = calendar_data["dateClick"]["date"]
@@ -206,7 +204,7 @@ if calendar_data.get("dateClick"):
 
 
 # =========================
-# 입력 UI
+# 입력
 # =========================
 members = list(member_colors.keys())
 
