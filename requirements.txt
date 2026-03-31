@@ -5,4 +5,4 @@ oauth2client
 matplotlib
 numpy
 plotly
-calendar
+streamlit-calendar==1.1.0
