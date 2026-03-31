@@ -26,10 +26,10 @@ def connect():
 
 client = connect()
 
-# 🔥 여기 본인 시트 URL로 바꾸세요 (강력추천)
-sheet = client.sheet = client.open("AION2 RAID")
+# ✅ 원래 잘 되던 방식으로 복구
+sheet = client.open("AION2 RAID")
 
-# 🔥 시트 탭 이름 확인
+# ✅ 시트 탭 이름 확인
 schedule_ws = sheet.worksheet("시트1")
 
 
@@ -43,7 +43,7 @@ st.write(f"📅 오늘 날짜: {today}")
 
 
 # =========================
-# 사이드바 (입력)
+# 사이드바 입력
 # =========================
 members = ["탱커", "힐러", "딜러1", "딜러2", "딜러3"]
 
@@ -70,7 +70,7 @@ with st.sidebar:
 
 
 # =========================
-# 🔥 달력 데이터 생성
+# 시트 데이터 → 달력 이벤트 변환
 # =========================
 rows = schedule_ws.get_all_values()
 
@@ -83,9 +83,8 @@ for row in rows:
         member_val = row[2]
         status_val = row[3]
 
-        title = f"{member_val}"
+        title = member_val
 
-        # ❌ 불가능 표시 강조
         if status_val == "불가능":
             title = f"❌ {member_val}"
 
@@ -99,18 +98,20 @@ for row in rows:
 
 
 # =========================
-# 🔥 클릭 가능한 달력
+# 🔥 가로 2달 달력
 # =========================
 st.subheader("📆 일정 달력")
 
 calendar_options = {
-    "initialView": "multiMonthYear",  # 🔥 2개월 보기
+    "initialView": "multiMonthYear",
     "locale": "ko",
-    "height": 700,
+    "height": 500,
+    "fixedWeekCount": False,
     "views": {
         "multiMonthYear": {
             "type": "multiMonth",
-            "duration": {"months": 2}
+            "duration": {"months": 2},
+            "multiMonthMaxColumns": 2
         }
     }
 }
@@ -119,7 +120,7 @@ state = calendar(events=events, options=calendar_options)
 
 
 # =========================
-# 🔥 날짜 클릭 시 상세 출력
+# 날짜 클릭 시 상세 표시
 # =========================
 if state.get("dateClick"):
     clicked_date = state["dateClick"]["date"]
