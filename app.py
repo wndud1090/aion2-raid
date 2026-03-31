@@ -4,6 +4,9 @@ from oauth2client.service_account import ServiceAccountCredentials
 import datetime
 from streamlit_calendar import calendar
 
+# ✅ 화면 넓게
+st.set_page_config(layout="wide")
+
 # =========================
 # 구글 시트 연결
 # =========================
@@ -20,8 +23,7 @@ def connect():
         creds_dict, scope
     )
 
-    client = gspread.authorize(creds)
-    return client
+    return gspread.authorize(creds)
 
 
 client = connect()
@@ -74,20 +76,32 @@ events = []
 
 for row in rows:
     try:
-        title = row[2]
-        if row[3] == "불가능":
-            title = f"❌ {row[2]}"
+        date_val = row[0]
+        time_val = row[1]
+        member_val = row[2]
+        status_val = row[3]
 
-        events.append({
-            "title": title,
-            "start": f"{row[0]}T{row[1]}",
-        })
+        # ✅ 가능 → 일반 이벤트 (동그라미)
+        if status_val == "가능":
+            events.append({
+                "title": member_val,
+                "start": f"{date_val}T{time_val}",
+            })
+
+        # 🔥 불가능 → 배경 이벤트 (칸 색칠)
+        else:
+            events.append({
+                "start": date_val,
+                "display": "background",
+                "color": "#ff4d4d"  # 빨간색
+            })
+
     except:
         pass
 
 
 # =========================
-# 🔥 가로 2달 강제 배치
+# 🔥 가로 2달 + 큰 달력
 # =========================
 st.subheader("📆 일정 달력")
 
@@ -95,15 +109,13 @@ col1, col2 = st.columns(2)
 
 # 이번달
 with col1:
-    st.markdown("### 이번달")
-
     cal1 = calendar(
         events=events,
         options={
             "initialView": "dayGridMonth",
             "initialDate": today.strftime("%Y-%m-01"),
             "locale": "ko",
-            "height": 500,
+            "height": 800,  # 🔥 크게
         },
     )
 
@@ -119,21 +131,19 @@ next_date = f"{next_year}-{str(next_month).zfill(2)}-01"
 
 # 다음달
 with col2:
-    st.markdown("### 다음달")
-
     cal2 = calendar(
         events=events,
         options={
             "initialView": "dayGridMonth",
             "initialDate": next_date,
             "locale": "ko",
-            "height": 500,
+            "height": 800,  # 🔥 크게
         },
     )
 
 
 # =========================
-# 클릭 처리 (두 달 모두 대응)
+# 날짜 클릭 시 상세
 # =========================
 clicked_date = None
 
