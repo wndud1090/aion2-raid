@@ -31,6 +31,13 @@ schedule_ws = sheet.worksheet("시트1")
 
 
 # =========================
+# 상태 저장 (선택 날짜들)
+# =========================
+if "selected_dates" not in st.session_state:
+    st.session_state.selected_dates = []
+
+
+# =========================
 # 기본 UI
 # =========================
 st.title("AION2 레이드 일정 관리")
@@ -40,65 +47,7 @@ st.write(f"📅 오늘 날짜: {today}")
 
 
 # =========================
-# 사이드바 입력
-# =========================
-members = ["탱커", "힐러", "딜러1", "딜러2", "딜러3"]
-
-with st.sidebar:
-    st.header("일정 입력")
-
-    date_range = st.date_input(
-        "📅 날짜 범위 선택",
-        value=(today, today),
-        format="YYYY년 MM월 DD일"
-    )
-
-    time = st.time_input("시간 선택")
-    member = st.selectbox("공대원 선택", members)
-
-    is_impossible = st.checkbox("❌ 이 날 불가능")
-
-    if st.button("저장"):
-
-        start_date, end_date = date_range
-        delta = (end_date - start_date).days
-
-        status = "불가능" if is_impossible else "가능"
-
-        # 🔥 기존 데이터 가져오기
-        rows = schedule_ws.get_all_values()
-
-        for i in range(delta + 1):
-            d = start_date + datetime.timedelta(days=i)
-            d_str = str(d)
-
-            # 🔥 덮어쓰기: 기존 행 삭제
-            delete_index = []
-
-            for idx, row in enumerate(rows):
-                try:
-                    if row[0] == d_str and row[2] == member:
-                        delete_index.append(idx + 1)  # gspread는 1부터 시작
-                except:
-                    pass
-
-            # 뒤에서부터 삭제 (인덱스 밀림 방지)
-            for index in reversed(delete_index):
-                schedule_ws.delete_rows(index)
-
-            # 🔥 새로 추가
-            schedule_ws.append_row([
-                d_str,
-                str(time),
-                member,
-                status
-            ])
-
-        st.success("덮어쓰기 저장 완료!")
-
-
-# =========================
-# 데이터 → 이벤트 변환
+# 데이터 불러오기
 # =========================
 rows = schedule_ws.get_all_values()
 
@@ -122,84 +71,101 @@ for row in rows:
                 "display": "background",
                 "color": "#ff4d4d"
             })
-
     except:
         pass
 
 
 # =========================
-# 달력 (가로 2달)
+# 달력 (선택 기능 포함)
 # =========================
-st.subheader("📆 일정 달력")
+st.subheader("📆 날짜 선택 (클릭해서 여러 개 선택 가능)")
 
-col1, col2 = st.columns(2)
+calendar_data = calendar(
+    events=events,
+    options={
+        "initialView": "dayGridMonth",
+        "locale": "ko",
+        "height": 800,
+        "selectable": True,   # 🔥 중요
+    },
+)
 
-with col1:
-    cal1 = calendar(
-        events=events,
-        options={
-            "initialView": "dayGridMonth",
-            "initialDate": today.strftime("%Y-%m-01"),
-            "locale": "ko",
-            "height": 800,
-        },
-    )
+# 날짜 클릭 → 추가
+if calendar_data.get("dateClick"):
+    clicked = calendar_data["dateClick"]["date"]
 
-next_month = today.month + 1
-next_year = today.year
-
-if next_month == 13:
-    next_month = 1
-    next_year += 1
-
-next_date = f"{next_year}-{str(next_month).zfill(2)}-01"
-
-with col2:
-    cal2 = calendar(
-        events=events,
-        options={
-            "initialView": "dayGridMonth",
-            "initialDate": next_date,
-            "locale": "ko",
-            "height": 800,
-        },
-    )
+    if clicked not in st.session_state.selected_dates:
+        st.session_state.selected_dates.append(clicked)
 
 
 # =========================
-# 날짜 클릭 상세
+# 선택된 날짜 표시
 # =========================
-clicked_date = None
+st.write("### 선택된 날짜")
 
-if cal1.get("dateClick"):
-    clicked_date = cal1["dateClick"]["date"]
-
-if cal2.get("dateClick"):
-    clicked_date = cal2["dateClick"]["date"]
-
-if clicked_date:
-    st.subheader(f"📅 {clicked_date} 일정")
-
-    found = False
-
-    for row in rows:
-        if row[0] == clicked_date:
-            found = True
-            if row[3] == "불가능":
-                st.write(f"❌ {row[2]} / {row[1]}")
-            else:
-                st.write(f"✅ {row[2]} / {row[1]}")
-
-    if not found:
-        st.write("일정 없음")
+if st.session_state.selected_dates:
+    st.write(st.session_state.selected_dates)
+else:
+    st.write("선택 없음")
 
 
 # =========================
-# 전체 리스트
+# 사이드바 입력
+# =========================
+members = ["탱커", "힐러", "딜러1", "딜러2", "딜러3"]
+
+with st.sidebar:
+    st.header("일정 입력")
+
+    member = st.selectbox("공대원 선택", members)
+    time = st.time_input("시간 선택")
+
+    is_impossible = st.checkbox("❌ 이 날 불가능")
+
+    if st.button("선택 날짜 저장"):
+
+        if not st.session_state.selected_dates:
+            st.warning("날짜 먼저 선택하세요")
+        else:
+            status = "불가능" if is_impossible else "가능"
+
+            rows = schedule_ws.get_all_values()
+
+            for d_str in st.session_state.selected_dates:
+
+                # 🔥 덮어쓰기 (같은 공대원 + 날짜)
+                delete_index = []
+
+                for idx, row in enumerate(rows):
+                    try:
+                        if row[0] == d_str and row[2] == member:
+                            delete_index.append(idx + 1)
+                    except:
+                        pass
+
+                for index in reversed(delete_index):
+                    schedule_ws.delete_rows(index)
+
+                # 새로 추가
+                schedule_ws.append_row([
+                    d_str,
+                    str(time),
+                    member,
+                    status
+                ])
+
+            st.success("저장 완료!")
+
+            # 선택 초기화
+            st.session_state.selected_dates = []
+
+
+# =========================
+# 전체 일정 리스트
 # =========================
 st.subheader("📋 전체 일정")
 
-for row in rows:
+for row in schedule_ws.get_all_values():
     try:
         if row[3] == "불가능":
             st.write(f"❌ {row[0]} / {row[1]} - {row[2]}")
