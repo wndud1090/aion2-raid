@@ -4,7 +4,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 import datetime
 from streamlit_calendar import calendar
 
-# ✅ 화면 넓게
 st.set_page_config(layout="wide")
 
 # =========================
@@ -48,23 +47,54 @@ members = ["탱커", "힐러", "딜러1", "딜러2", "딜러3"]
 with st.sidebar:
     st.header("일정 입력")
 
-    date = st.date_input("날짜 선택", value=today)
+    date_range = st.date_input(
+        "📅 날짜 범위 선택",
+        value=(today, today),
+        format="YYYY년 MM월 DD일"
+    )
+
     time = st.time_input("시간 선택")
     member = st.selectbox("공대원 선택", members)
 
     is_impossible = st.checkbox("❌ 이 날 불가능")
 
     if st.button("저장"):
+
+        start_date, end_date = date_range
+        delta = (end_date - start_date).days
+
         status = "불가능" if is_impossible else "가능"
 
-        schedule_ws.append_row([
-            str(date),
-            str(time),
-            member,
-            status
-        ])
+        # 🔥 기존 데이터 가져오기
+        rows = schedule_ws.get_all_values()
 
-        st.success("저장 완료!")
+        for i in range(delta + 1):
+            d = start_date + datetime.timedelta(days=i)
+            d_str = str(d)
+
+            # 🔥 덮어쓰기: 기존 행 삭제
+            delete_index = []
+
+            for idx, row in enumerate(rows):
+                try:
+                    if row[0] == d_str and row[2] == member:
+                        delete_index.append(idx + 1)  # gspread는 1부터 시작
+                except:
+                    pass
+
+            # 뒤에서부터 삭제 (인덱스 밀림 방지)
+            for index in reversed(delete_index):
+                schedule_ws.delete_rows(index)
+
+            # 🔥 새로 추가
+            schedule_ws.append_row([
+                d_str,
+                str(time),
+                member,
+                status
+            ])
+
+        st.success("덮어쓰기 저장 완료!")
 
 
 # =========================
@@ -81,19 +111,16 @@ for row in rows:
         member_val = row[2]
         status_val = row[3]
 
-        # ✅ 가능 → 일반 이벤트 (동그라미)
         if status_val == "가능":
             events.append({
                 "title": member_val,
                 "start": f"{date_val}T{time_val}",
             })
-
-        # 🔥 불가능 → 배경 이벤트 (칸 색칠)
         else:
             events.append({
                 "start": date_val,
                 "display": "background",
-                "color": "#ff4d4d"  # 빨간색
+                "color": "#ff4d4d"
             })
 
     except:
@@ -101,13 +128,12 @@ for row in rows:
 
 
 # =========================
-# 🔥 가로 2달 + 큰 달력
+# 달력 (가로 2달)
 # =========================
 st.subheader("📆 일정 달력")
 
 col1, col2 = st.columns(2)
 
-# 이번달
 with col1:
     cal1 = calendar(
         events=events,
@@ -115,11 +141,10 @@ with col1:
             "initialView": "dayGridMonth",
             "initialDate": today.strftime("%Y-%m-01"),
             "locale": "ko",
-            "height": 800,  # 🔥 크게
+            "height": 800,
         },
     )
 
-# 다음달 계산
 next_month = today.month + 1
 next_year = today.year
 
@@ -129,7 +154,6 @@ if next_month == 13:
 
 next_date = f"{next_year}-{str(next_month).zfill(2)}-01"
 
-# 다음달
 with col2:
     cal2 = calendar(
         events=events,
@@ -137,13 +161,13 @@ with col2:
             "initialView": "dayGridMonth",
             "initialDate": next_date,
             "locale": "ko",
-            "height": 800,  # 🔥 크게
+            "height": 800,
         },
     )
 
 
 # =========================
-# 날짜 클릭 시 상세
+# 날짜 클릭 상세
 # =========================
 clicked_date = None
 
