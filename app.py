@@ -31,7 +31,7 @@ schedule_ws = sheet.worksheet("시트1")
 
 
 # =========================
-# 상태 저장 (선택 날짜들)
+# 상태 (선택 날짜)
 # =========================
 if "selected_dates" not in st.session_state:
     st.session_state.selected_dates = []
@@ -51,7 +51,12 @@ st.write(f"📅 오늘 날짜: {today}")
 # =========================
 rows = schedule_ws.get_all_values()
 
+
+# =========================
+# 이벤트 생성 (핵심)
+# =========================
 events = []
+date_map = {}
 
 for row in rows:
     try:
@@ -60,25 +65,53 @@ for row in rows:
         member_val = row[2]
         status_val = row[3]
 
-        if status_val == "가능":
-            events.append({
-                "title": member_val,
-                "start": f"{date_val}T{time_val}",
-            })
-        else:
-            events.append({
-                "start": date_val,
-                "display": "background",
-                "color": "#ff4d4d"
-            })
+        if date_val not in date_map:
+            date_map[date_val] = {
+                "가능": [],
+                "불가능": []
+            }
+
+        date_map[date_val][status_val].append(member_val)
+
     except:
         pass
 
 
+TOTAL_MEMBERS = 8  # 필요시 수정
+
+for date_val, data in date_map.items():
+
+    possible_count = len(data["가능"])
+    impossible_count = len(data["불가능"])
+
+    # 🔥 인원 표시
+    if possible_count > 0:
+        events.append({
+            "title": f"{possible_count}명",
+            "start": date_val,
+        })
+
+    # 🔥 ❗ 핵심: 1명이라도 불가능 → 무조건 빨강
+    if impossible_count > 0:
+        events.append({
+            "start": date_val,
+            "display": "background",
+            "color": "#ff4d4d"
+        })
+
+    # 🔥 전원 가능 → 초록 강조
+    elif possible_count == TOTAL_MEMBERS:
+        events.append({
+            "start": date_val,
+            "display": "background",
+            "color": "#00ff99"
+        })
+
+
 # =========================
-# 달력 (선택 기능 포함)
+# 달력 + 선택 기능
 # =========================
-st.subheader("📆 날짜 선택 (클릭해서 여러 개 선택 가능)")
+st.subheader("📆 날짜 선택")
 
 calendar_data = calendar(
     events=events,
@@ -86,33 +119,28 @@ calendar_data = calendar(
         "initialView": "dayGridMonth",
         "locale": "ko",
         "height": 800,
-        "selectable": True,   # 🔥 중요
     },
 )
 
-# 날짜 클릭 → 추가
+# 클릭 → 토글 선택
 if calendar_data.get("dateClick"):
     clicked = calendar_data["dateClick"]["date"]
 
-    if clicked not in st.session_state.selected_dates:
+    if clicked in st.session_state.selected_dates:
+        st.session_state.selected_dates.remove(clicked)
+    else:
         st.session_state.selected_dates.append(clicked)
 
 
-# =========================
-# 선택된 날짜 표시
-# =========================
+# 선택 표시
 st.write("### 선택된 날짜")
-
-if st.session_state.selected_dates:
-    st.write(st.session_state.selected_dates)
-else:
-    st.write("선택 없음")
+st.write(st.session_state.selected_dates)
 
 
 # =========================
 # 사이드바 입력
 # =========================
-members = ["탱커", "힐러", "딜러1", "딜러2", "딜러3"]
+members = ["탱커", "힐러", "딜러1", "딜러2", "딜러3", "딜러4", "딜러5", "딜러6"]
 
 with st.sidebar:
     st.header("일정 입력")
@@ -122,7 +150,7 @@ with st.sidebar:
 
     is_impossible = st.checkbox("❌ 이 날 불가능")
 
-    if st.button("선택 날짜 저장"):
+    if st.button("저장"):
 
         if not st.session_state.selected_dates:
             st.warning("날짜 먼저 선택하세요")
@@ -133,7 +161,6 @@ with st.sidebar:
 
             for d_str in st.session_state.selected_dates:
 
-                # 🔥 덮어쓰기 (같은 공대원 + 날짜)
                 delete_index = []
 
                 for idx, row in enumerate(rows):
@@ -146,30 +173,29 @@ with st.sidebar:
                 for index in reversed(delete_index):
                     schedule_ws.delete_rows(index)
 
-                # 새로 추가
+                # 🔥 시간 포맷 FIX
                 schedule_ws.append_row([
                     d_str,
-                    str(time),
+                    time.strftime("%H:%M:%S"),
                     member,
                     status
                 ])
 
             st.success("저장 완료!")
-
-            # 선택 초기화
             st.session_state.selected_dates = []
 
 
 # =========================
-# 전체 일정 리스트
+# 상세 보기
 # =========================
-st.subheader("📋 전체 일정")
+if calendar_data.get("dateClick"):
+    clicked = calendar_data["dateClick"]["date"]
 
-for row in schedule_ws.get_all_values():
-    try:
-        if row[3] == "불가능":
-            st.write(f"❌ {row[0]} / {row[1]} - {row[2]}")
-        else:
-            st.write(f"✅ {row[0]} / {row[1]} - {row[2]}")
-    except:
-        pass
+    st.subheader(f"📅 {clicked} 상세")
+
+    for row in rows:
+        if row[0] == clicked:
+            if row[3] == "불가능":
+                st.write(f"❌ {row[2]} / {row[1]}")
+            else:
+                st.write(f"✅ {row[2]} / {row[1]}")
